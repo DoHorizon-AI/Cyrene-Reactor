@@ -1,0 +1,11 @@
+{
+  "repository": "DoHorizon-AI/Cyrene-Yield",
+  "revision": "310c2f7fc256f3d34f490c47e63d9d553b6dfc1d",
+  "sha256": {
+    "contracts/product/v1/model-version.schema.json": "b8287ab4558581a2534dee254925c42cb58a09da82f5dd08d4eee1762aafe6b4"
+  },
+  "projectionSha256": {
+    "model-version.schema.json": "9eab80eb6d13e5a803b799bc94f63936127fd70921e3ff793ff83117ee8bb3ee"
+  },
+  "transform": "rebase ArtifactRef reference for Reactor generated tree"
+}

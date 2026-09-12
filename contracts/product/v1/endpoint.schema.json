@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.cyrene.dev/reactor/product/v1/endpoint.schema.json",
+  "title": "Reactor Endpoint v1",
+  "type": "object",
+  "required": [
+    "id",
+    "deploymentId",
+    "state",
+    "url",
+    "protocol",
+    "createdAt",
+    "updatedAt",
+    "resourceVersion"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "deploymentId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "state": {
+      "enum": [
+        "PROVISIONING",
+        "READY",
+        "UNHEALTHY",
+        "RETIRED"
+      ]
+    },
+    "url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "protocol": {
+      "const": "openai.chat.v1"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "resourceVersion": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "model": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,217 @@
+name: $(Date:yyyyMMdd)$(Rev:.r)
+
+parameters:
+- name: githubServiceConnection
+  type: string
+  default: DoHorizon-AI
+- name: platformRef
+  type: string
+  default: c59be6f2bd82489fbe933dadff84fc589e00afd9
+- name: yieldRef
+  type: string
+  default: 310c2f7fc256f3d34f490c47e63d9d553b6dfc1d
+# GitHub Actions owns Reactor's automatic source and contract checks. This Azure
+# definition is a manual supplemental lane for protected cross-repository or
+# deployment acceptance; concrete-engine GPU acceptance runs in Plugins.
+trigger: none
+pr: none
+
+resources:
+  repositories:
+  - repository: platform
+    type: github
+    name: DoHorizon-AI/Cyrene-Platform
+    endpoint: ${{ parameters.githubServiceConnection }}
+    ref: ${{ parameters.platformRef }}
+
+  - repository: yield
+    type: github
+    name: DoHorizon-AI/Cyrene-Yield
+    endpoint: ${{ parameters.githubServiceConnection }}
+    ref: ${{ parameters.yieldRef }}
+
+pool:
+  vmImage: ubuntu-latest
+
+jobs:
+- job: reactor_clean_core
+  displayName: 'Reactor / Rust & Python Clean-Room Suite'
+  timeoutInMinutes: 20
+  variables:
+    UV_CACHE_DIR: '$(Pipeline.Workspace)/.cache/uv'
+    CARGO_HOME: '$(Pipeline.Workspace)/.cargo'
+  steps:
+  - checkout: self
+    path: s/Cyrene-Reactor
+    persistCredentials: true
+    displayName: 'Checkout repository'
+
+  - checkout: platform
+    path: s/Cyrene-Platform
+
+  - checkout: yield
+    path: s/Cyrene-Yield
+  - bash: |
+      set -euo pipefail
+      mkdir -p "$(Pipeline.Workspace)/.cache/uv"
+      mkdir -p "$(Pipeline.Workspace)/.cargo"
+      mkdir -p "$(Pipeline.Workspace)/s/Cyrene-Reactor/target"
+    displayName: 'Prepare dependency and Cargo cache directories'
+  - task: Cache@2
+    inputs:
+      key: 'uv | "$(Agent.OS)" | "$(Build.Repository.Name)" | Cyrene-Reactor/uv.lock'
+      restoreKeys: |
+        uv | "$(Agent.OS)" | "$(Build.Repository.Name)"
+      path: '$(Pipeline.Workspace)/.cache/uv'
+    displayName: 'Restore uv dependency cache'
+  - task: Cache@2
+    inputs:
+      key: 'cargo | "$(Agent.OS)" | "$(Build.Repository.Name)" | Cyrene-Reactor/Cargo.lock'
+      restoreKeys: |
+        cargo | "$(Agent.OS)" | "$(Build.Repository.Name)"
+      path: '$(Pipeline.Workspace)/.cargo'
+    displayName: 'Restore Cargo registry cache'
+  - task: Cache@2
+    inputs:
+      key: 'cargo-target | "$(Agent.OS)" | "$(Build.Repository.Name)" | Cyrene-Reactor/Cargo.lock'
+      restoreKeys: |
+        cargo-target | "$(Agent.OS)" | "$(Build.Repository.Name)"
+      path: '$(Pipeline.Workspace)/s/Cyrene-Reactor/target'
+    displayName: 'Restore Cargo target cache'
+
+  - script: |
+      rustup update stable
+      rustup component add rustfmt clippy
+      cargo fmt --all -- --check
+      cargo check --locked --workspace --all-targets
+      cargo clippy --locked --workspace --all-targets -- -D warnings
+      cargo test --locked --workspace
+    workingDirectory: $(Pipeline.Workspace)/s/Cyrene-Reactor
+    displayName: 'Rust Core Quality Gate'
+
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.12'
+    displayName: 'Setup Python 3.12'
+
+  - script: |
+      python -m pip install --upgrade pip uv==0.12.3
+      uv sync --frozen --extra dev
+      uv run --frozen python -m pytest runtime/core/tests/
+    workingDirectory: $(Pipeline.Workspace)/s/Cyrene-Reactor
+    displayName: 'Run Python Serving Tests'
+
+  - bash: |
+      set -euo pipefail
+      platform_revision="$(git -C "$(Pipeline.Workspace)/s/Cyrene-Platform" rev-parse HEAD)"
+      yield_revision="$(git -C "$(Pipeline.Workspace)/s/Cyrene-Yield" rev-parse HEAD)"
+      test "${platform_revision}" = "${{ parameters.platformRef }}"
+      test "${yield_revision}" = "${{ parameters.yieldRef }}"
+      python -m json.tool ../service.json >/dev/null
+      uv sync --locked --group dev --no-install-package cyrene-artifacts --no-install-package cyrene-yield-contracts
+      uv pip install --no-deps "$(Pipeline.Workspace)/s/Cyrene-Platform/sdk/python/cyrene_artifacts" "$(Pipeline.Workspace)/s/Cyrene-Yield/sdk/python/cyrene_yield_contracts"
+    workingDirectory: $(Pipeline.Workspace)/s/Cyrene-Reactor/product
+    displayName: 'Install locked product dependencies and Platform SDK'
+
+  - bash: |
+      set -euo pipefail
+      uv run --no-sync ruff check src tests
+      uv run --no-sync mypy
+      uv run --no-sync python scripts/project_artifact_ref_schema.py \
+        --platform-repository "$(Pipeline.Workspace)/s/Cyrene-Platform" --check
+      uv run --no-sync python scripts/project_model_version_schema.py \
+        --yield-repository "$(Pipeline.Workspace)/s/Cyrene-Yield" --check
+      uv run --no-sync pytest -q tests --junitxml=test-results.xml
+      uv run --no-sync python - <<'PY'
+      from pathlib import Path
+      from openapi_spec_validator import validate
+      from openapi_spec_validator.readers import read_from_filename
+      for path in Path("../contracts/product/v1").glob("*openapi.yaml"):
+          document, base = read_from_filename(str(path.resolve()))
+          validate(document, base_uri=base)
+          print("Validated", path.name)
+      PY
+    workingDirectory: $(Pipeline.Workspace)/s/Cyrene-Reactor/product
+    env:
+      CYRENE_PLATFORM_WORKTREE: $(Pipeline.Workspace)/s/Cyrene-Platform
+    displayName: 'Product lint, type, unit, contract and OpenAPI checks'
+
+  - task: PublishTestResults@2
+    condition: succeededOrFailed()
+    inputs:
+      testResultsFormat: JUnit
+      testResultsFiles: '$(Pipeline.Workspace)/s/Cyrene-Reactor/product/test-results.xml'
+      failTaskOnFailedTests: true
+      failTaskOnMissingResultsFile: true
+
+- job: publish_evidence
+  displayName: 'Reactor / Assemble Evidence'
+  dependsOn: reactor_clean_core
+  condition: succeeded()
+  pool:
+    vmImage: 'ubuntu-latest'
+  steps:
+  - script: |
+      mkdir -p ci/evidence
+      cat <<EOT > ci/evidence/summary.json
+      {
+        "suite": "Cyrene-Reactor-Baseline",
+        "commit": "$(Build.SourceVersion)",
+        "pipeline": "$(Build.DefinitionName)",
+        "build_id": "$(Build.BuildId)",
+        "result": "PASS",
+        "timestamp": "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+      }
+      EOT
+    displayName: 'Generate Evidence Ledger'
+
+  - publish: ci/evidence
+    artifact: reactor-evidence
+    displayName: 'Publish Reactor Evidence'
+
+- job: legacy_surface_governance
+  displayName: 'Governance / Reactor Architecture Boundary'
+  pool:
+    vmImage: 'ubuntu-latest'
+  steps:
+  - checkout: self
+    path: s/Cyrene-Reactor
+    persistCredentials: true
+  - bash: |
+      set -euo pipefail
+      test ! -e runtime/core/src/cy_exec/extension_points.py
+      legacy_paths="$(git ls-files 'legacy/**' 'archive/**' '*.legacy.*' '*.bak' '*.backup' || true)"
+      if [[ -n "${legacy_paths}" ]]; then
+        echo 'Legacy or backup source was reintroduced:' >&2
+        printf '%s\n' "${legacy_paths}" >&2
+        exit 1
+      fi
+      if git grep -n -i -E \
+        'cyrene-capability-client|cy-capability-execution-service|capability_execution|Platform CES|contracts/proto/plugin/v1' -- \
+        runtime product/src components contracts/product; then
+        echo 'Platform business data-plane dependency was reintroduced.' >&2
+        exit 1
+      fi
+      if git grep -n -E \
+        'class (ProbeABC|ModelAnalyzerABC|CompatRuleABC|RuntimeBuilderABC|ExecutionEngineABC|TrainingBackendABC|QuantizationABC|GatewayFilterABC|NotificationABC|StorageABC)' -- \
+        runtime product/src components; then
+        echo 'Retired monolithic typed SPI was reintroduced.' >&2
+        exit 1
+      fi
+      test "$(find runtime/core/src/cy_exec/engines -maxdepth 1 -type f -name '*.py' -printf '%f\n' | sort | tr '\n' ' ')" = '__init__.py abstract_engine.py '
+      test ! -e runtime/pro/src/cy_exec_pro/core/engine_selector.py
+      test ! -e runtime/pro/src/cy_exec_pro/engines/api_engine.py
+      test ! -d runtime/core/src/cy_exec/cache
+      test ! -d runtime/pro/src/cy_exec_pro/engines/cache
+      test ! -d components/scheduler-rs
+      test ! -e product/src/cyrene_reactor_product/vllm_worker.py
+      test ! -e serving-runtime
+      if git grep -n -E 'AiTraining|gateway\.cache\.v1|PromptCache|KVCacheManager' -- \
+        runtime/core/proto runtime/core/src runtime/pro/src product/src; then
+        echo 'Training and cache implementations do not belong in Reactor.' >&2
+        exit 1
+      fi
+      grep -q 'DirectPluginClient' runtime/core/src/cy_exec/capability_seam.py
+      echo 'Reactor calls owner-scoped Plugin contracts without a Platform business proxy.'
+    workingDirectory: $(Pipeline.Workspace)/s/Cyrene-Reactor
+    displayName: 'Reject old SPI and Platform business proxy dependencies'

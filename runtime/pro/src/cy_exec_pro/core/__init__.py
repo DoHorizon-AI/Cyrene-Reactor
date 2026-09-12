@@ -1,0 +1,15 @@
+"""Pro-only runtime coordination helpers.
+
+Submodules are intentionally not imported here so importing the package does
+not probe optional GPU/NPU libraries or start a service.
+"""
+# ┌─────────────────────────────────────────────────────────────────────┐
+# │ 📄 runtime/pro/src/cy_exec_pro/core/__init__.py
+# │ Module: runtime/pro/src/cy_exec_pro/core/__init__
+# │ Role: Optional Reactor Pro runtime — adds relay, hardware, cache, LoRA, and coordination extensions.
+# │
+# │ 模块职责：Reactor 可选 Pro 运行时——提供中继、硬件、缓存、LoRA 与协调扩展。
+# └─────────────────────────────────────────────────────────────────────┘
+
+
+__all__: list[str] = []

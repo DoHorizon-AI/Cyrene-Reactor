@@ -1,0 +1,410 @@
+# Generated from implemented Product actions; ArtifactRef is Platform-owned and ModelVersion is Yield-owned.
+openapi: 3.1.2
+x-cyrene-contract-profile: product-http-v1
+info:
+  title: Cyrene Reactor Product API
+  version: 1.0.0
+paths:
+  /api/v1/deployment-drafts:
+    post:
+      summary: Import Draft
+      operationId: import_draft_api_v1_deployment_drafts_post
+      parameters:
+      - name: idempotency-key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            maxLength: 200
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDeploymentDraft'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentDraft'
+        '422':
+          description: Product action rejected (RFC 9457)
+          content:
+            application/problem+json:
+              schema:
+                $ref: ./generated/common/problem-details.schema.json
+        '404':
+          description: Product action rejected (RFC 9457)
+          content:
+            application/problem+json:
+              schema:
+                $ref: ./generated/common/problem-details.schema.json
+        '409':
+          description: Product action rejected (RFC 9457)
+          content:
+            application/problem+json:
+              schema:
+                $ref: ./generated/common/problem-details.schema.json
+        '502':
+          description: Product action rejected (RFC 9457)
+          content:
+            application/problem+json:
+              schema:
+                $ref: ./generated/common/problem-details.schema.json
+        '503':
+          description: Product action rejected (RFC 9457)
+          content:
+            application/problem+json:
+              schema:
+                $ref: ./generated/common/problem-details.schema.json
+    get:
+      summary: List Drafts
+      operationId: list_drafts_api_v1_deployment_drafts_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DeploymentDraft'
+                title: Response List Drafts Api V1 Deployment Drafts Get
+        '404':
+          description: Product action rejected (RFC 9457)
+          content:
+            application/problem+json:
+              schema:
+                $ref: ./generated/common/problem-details.schema.json
+        '409':
+          description: Product action rejected (RFC 9457)
+          content:
+            application/problem+json:
+              schema:
+                $ref: ./generated/common/problem-details.schema.json
+        '422':
+          description: Product action rejected (RFC 9457)
+          content:
+            application/problem+json:
+              schema:
+                $ref: ./generated/common/problem-details.schema.json
+        '502':
+          description: Product action rejected (RFC 9457)
+          content:
+            application/problem+json:
+              schema:
+                $ref: ./generated/common/problem-details.schema.json
+        '503':
+          description: Product action rejected (RFC 9457)
+          content:
+            application/problem+json:
+              schema:
+                $ref: ./generated/common/problem-details.schema.json
+  /api/v1/deployment-drafts/{draft_id}:
+    get:
+      summary: Get Draft
+      operationId: get_draft_api_v1_deployment_drafts__draft_id__get
+      parameters:
+      - name: draft_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Draft Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentDraft'
+        '422':
+          description: Product action rejected (RFC 9457)
+          content:
+            application/problem+json:
+              schema:
+                $ref: ./generated/common/problem-details.schema.json
+        '404':
+          description: Product action rejected (RFC 9457)
+          content:
+            application/problem+json:
+              schema:
+                $ref: ./generated/common/problem-details.schema.json
+        '409':
+          description: Product action rejected (RFC 9457)
+          content:
+            application/problem+json:
+              schema:
+                $ref: ./generated/common/problem-details.schema.json
+        '502':
+          description: Product action rejected (RFC 9457)
+          content:
+            application/problem+json:
+              schema:
+                $ref: ./generated/common/problem-details.schema.json
+        '503':
+          description: Product action rejected (RFC 9457)
+          content:
+            application/problem+json:
+              schema:
+                $ref: ./generated/common/problem-details.schema.json
+  /api/v1/deployment-drafts/{draft_id}/actions/deploy:
+    post:
+      summary: Deploy Draft
+      operationId: deploy_draft_api_v1_deployment_drafts__draft_id__actions_deploy_post
+      parameters:
+      - name: draft_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Draft Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeployDraftRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Deployment'
+        '422':
+          description: Product action rejected (RFC 9457)
+          content:
+            application/problem+json:
+              schema:
+                $ref: ./generated/common/problem-details.schema.json
+        '404':
+          description: Product action rejected (RFC 9457)
+          content:
+            application/problem+json:
+              schema:
+                $ref: ./generated/common/problem-details.schema.json
+        '409':
+          description: Product action rejected (RFC 9457)
+          content:
+            application/problem+json:
+              schema:
+                $ref: ./generated/common/problem-details.schema.json
+        '502':
+          description: Product action rejected (RFC 9457)
+          content:
+            application/problem+json:
+              schema:
+                $ref: ./generated/common/problem-details.schema.json
+        '503':
+          description: Product action rejected (RFC 9457)
+          content:
+            application/problem+json:
+              schema:
+                $ref: ./generated/common/problem-details.schema.json
+components:
+  schemas:
+    ArtifactRef:
+      $ref: ./generated/platform/artifact-ref.schema.json
+    CreateDeploymentDraft:
+      properties:
+        sourceRef:
+          $ref: '#/components/schemas/ProductResourceRef'
+        modelVersion:
+          $ref: ./generated/yield/model-version.schema.json
+      additionalProperties: false
+      type: object
+      required:
+      - sourceRef
+      - modelVersion
+      title: CreateDeploymentDraft
+      description: Import a canonical version; no execution intent is implied. | 导入部署草稿。
+    DeployDraftRequest:
+      properties:
+        name:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Name
+        servingBindingId:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Servingbindingid
+        nodeRef:
+          anyOf:
+          - $ref: '#/components/schemas/NodeRef'
+          - type: 'null'
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      - servingBindingId
+      title: DeployDraftRequest
+      description: User-selected serving destination for an imported draft. | 用户选择部署目标。
+    Deployment:
+      $ref: ./deployment.schema.json
+    DeploymentDraft:
+      properties:
+        sourceRef:
+          $ref: '#/components/schemas/ProductResourceRef'
+        modelVersion:
+          $ref: ./generated/yield/model-version.schema.json
+        id:
+          type: string
+          format: uuid
+          title: Id
+        resourceRef:
+          $ref: '#/components/schemas/ProductResourceRef'
+        state:
+          type: string
+          enum:
+          - DRAFT
+          - STARTED
+          title: State
+          default: DRAFT
+        deploymentRef:
+          anyOf:
+          - $ref: '#/components/schemas/ProductResourceRef'
+          - type: 'null'
+        createdAt:
+          type: string
+          format: date-time
+          title: Createdat
+      additionalProperties: false
+      type: object
+      required:
+      - sourceRef
+      - modelVersion
+      - id
+      - resourceRef
+      - createdAt
+      title: DeploymentDraft
+      description: Reactor-owned preparation before explicit deployment. | 显式部署前的准备资源。
+    DesiredState:
+      type: string
+      enum:
+      - ACTIVE
+      - STOPPED
+      title: DesiredState
+      description: User-owned Deployment intent. | 用户声明的 Deployment 意图。
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    ModelComposition:
+      type: string
+      enum:
+      - FULL_MODEL
+      - BASE_PLUS_LORA
+      title: ModelComposition
+      description: Supported immutable serving composition. | 支持的不可变模型组合。
+    NodeRef:
+      properties:
+        nodeId:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Nodeid
+        nodeEpoch:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Nodeepoch
+      additionalProperties: false
+      type: object
+      required:
+      - nodeId
+      - nodeEpoch
+      title: NodeRef
+      description: Projection of the canonical Node identity and epoch. | 节点身份与纪元投影。
+    ObservedState:
+      type: string
+      enum:
+      - STARTING
+      - READY
+      - DEGRADED
+      - FAILED
+      - STOPPING
+      - STOPPED
+      title: ObservedState
+      description: Reactor-owned reconciled Deployment observation. | Reactor 观测状态。
+    ProductFailure:
+      properties:
+        code:
+          type: string
+          title: Code
+        message:
+          type: string
+          title: Message
+        retryable:
+          type: boolean
+          title: Retryable
+      additionalProperties: false
+      type: object
+      required:
+      - code
+      - message
+      - retryable
+      title: ProductFailure
+      description: Failure persisted on Deployment state. | Deployment 持久化失败。
+    ProductResourceRef:
+      properties:
+        uri:
+          type: string
+          maxLength: 2000
+          pattern: ^(cyrene|https?)://
+          title: Uri
+        id:
+          type: string
+          format: uuid
+          title: Id
+        resourceVersion:
+          type: integer
+          minimum: 1.0
+          title: Resourceversion
+      additionalProperties: false
+      type: object
+      required:
+      - uri
+      - id
+      - resourceVersion
+      title: ProductResourceRef
+      description: Cross-Product reference without producer business state. | 跨产品资源引用。
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError

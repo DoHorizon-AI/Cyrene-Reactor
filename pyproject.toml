@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cyrene-reactor"
+version = "0.1.0"
+description = "Cyrene Reactor: Model Inference and Serving Product Service"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+dependencies = [
+    # Plugins-owned direct transport, pinned to the accepted immutable revision.
+    "cyrene-plugin-runtime @ git+https://github.com/DoHorizon-AI/Cyrene-Plugins-Official.git@c3f75689ebb10b2e07b3816310e768d74ae6cc10#subdirectory=sdk/python/cyrene_plugin_runtime",
+    "grpcio>=1.60.0",
+    "grpcio-tools>=1.60.0",
+    "protobuf>=4.25.0",
+    "pydantic>=2.0.0,<3.0.0",
+    "pydantic-settings>=2.0.0,<3.0.0",
+    "PyYAML>=6.0",
+    "packaging>=23.0",
+    "psutil>=5.9.0",
+    "watchdog>=3.0.0",
+]
+
+[tool.uv]
+package = false
+# The accepted Plugins SDK currently declares an older transport dependency
+# floor. Reactor's generated protobuf bindings require the current workspace
+# runtime, so resolve both against these tested versions without a sibling
+# checkout. | SDK 元数据较旧，统一解析到 Reactor 已验证的运行时版本。
+override-dependencies = [
+    "grpcio==1.83.0",
+    "grpcio-tools==1.83.0",
+    "protobuf==7.36.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "hypothesis>=6.100.0",
+    "ruff>=0.11.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["runtime/core/tests", "runtime/pro/tests"]
+pythonpath = ["runtime/core/src", "runtime/pro/src"]
+addopts = "-ra"
+markers = [
+    "gpu: marks tests as requiring GPU (deselect with '-m \"not gpu\"')",
+    "integration: marks tests as integration tests",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E9", "F63", "F7"]
+ignore = []

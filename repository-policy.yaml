@@ -1,0 +1,58 @@
+schema_version: cyrene.repository-policy.v1
+repository:
+  logical_name: Cyrene-Reactor
+  lifecycle_class: PUBLIC_PRODUCT
+  # Publication target; the live GitHub setting is switched and read back separately.
+  # Public history is a clean root; former refs remain in a private archive.
+  visibility: public
+  source_owner: Cyrene Inference Product Team
+  remote_default_branch: main
+  integration_branch: develop
+  release_branch: main
+  default_branch: main
+ownership:
+  owns:
+  - Model serving & inference product semantics
+  - Serving deployment desired state & autoscaling
+  - Inference request routing and worker control
+  does_not_own:
+  - Generic OS memory isolation
+  - Low-level driver probe logic
+  - Concrete inference engine or provider implementations
+  - Prompt/response cache or engine KV-cache implementations
+  - Generic placement, package scheduling, or resource allocation
+  - Training or evaluation execution
+build:
+  independent: true
+  build_systems:
+  - cargo
+  - uv
+artifacts:
+  package_units:
+  - cyrene-reactor-product
+  - cy-exec
+  - cy-exec-pro
+  - cyrene-reactor-host-placement
+  native_binaries:
+  - cyrene-reactor-host-placement
+distribution:
+  role: COMPONENT_RELEASE
+  profiles:
+  - serving
+  - full
+  standalone_user_product: false
+integration:
+  multi_repo_required: true
+authorities:
+  ci: github
+  release: ghcr
+  deployment: dohorizon_azure
+trust:
+  public_requires_private: false
+versioning:
+  scheme: semver
+  scope: repository
+  tag_strategy: repository
+  tag_pattern: v{version}
+  # No repository release workflow exists on the current branch.
+  automated_release: false

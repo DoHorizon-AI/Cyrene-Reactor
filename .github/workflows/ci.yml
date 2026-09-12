@@ -1,0 +1,68 @@
+name: ci
+
+on:
+  push:
+    branches: [main, develop, chore/*, feat/*, fix/*]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust-clippy-test:
+    name: ci / rust-clippy-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Cargo check (--locked)
+        run: cargo check --locked --workspace --all-targets
+      - name: Clippy check
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - name: Rust unit tests
+        run: cargo test --locked --workspace
+
+  python-serving:
+    name: ci / python-serving
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v6
+      - name: Enforce Plugin implementation ownership
+        run: |
+          test ! -d serving-runtime
+          test ! -e product/src/cyrene_reactor_product/vllm_worker.py
+          test ! -e product/src/cyrene_reactor_product/reference_server.py
+          test ! -e runtime/core/src/cy_exec/engines/engine_factory.py
+          test ! -e runtime/core/src/cy_exec/engines/vllm_async_engine.py
+          test ! -e runtime/pro/src/cy_exec_pro/engines/api_engine.py
+          test ! -d runtime/core/src/cy_exec/cache
+          test ! -d runtime/pro/src/cy_exec_pro/engines/cache
+          test ! -d components/scheduler-rs
+          if rg -n '^(from|import) (torch|transformers|vllm|tensorrt|mindie|safetensors)(\.| |$)' \
+            runtime/core/src runtime/pro/src product/src; then
+            echo 'Concrete model/runtime implementations belong in Cyrene-Plugins-Official.' >&2
+            exit 1
+          fi
+          if rg -n 'AiTraining|gateway\.cache\.v1|PromptCache|KVCacheManager' \
+            runtime/core/proto runtime/core/src runtime/pro/src product/src; then
+            echo 'Training and cache implementations do not belong in Reactor.' >&2
+            exit 1
+          fi
+      - name: Lint and test Python serving seams
+        run: |
+          uv sync --frozen --extra dev
+          uv run --frozen ruff check runtime/core/src runtime/core/tests runtime/pro/src runtime/pro/tests
+          uv run --frozen python -m pytest runtime/core/tests/ runtime/pro/tests/

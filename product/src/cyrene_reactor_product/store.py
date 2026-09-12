@@ -1,0 +1,280 @@
+"""
+┌─────────────────────────────────────────────────────────────────────┐
+│  📄 store.py                                                        │
+│  Module: cyrene_reactor_product.store                               │
+│  Role: SQLite Product state authority and idempotency ledger.        │
+│                                                                     │
+│  模块职责：持久化 Deployment、Endpoint 与幂等账本。                       │
+└─────────────────────────────────────────────────────────────────────┘
+"""
+
+from __future__ import annotations
+
+import json
+import sqlite3
+from pathlib import Path
+from threading import RLock
+from uuid import UUID
+
+from cyrene_reactor_product.domain import Deployment, DeploymentDraft, Endpoint
+from cyrene_reactor_product.errors import ReactorProductError
+
+
+class ReactorStore:
+    """Durable Product store independent of engine and Kernel state. | 产品权威存储。"""
+
+    def __init__(self, database_path: Path) -> None:
+        database_path.parent.mkdir(parents=True, exist_ok=True)
+        self._connection = sqlite3.connect(database_path, check_same_thread=False)
+        self._connection.row_factory = sqlite3.Row
+        self._lock = RLock()
+        with self._connection:
+            self._connection.execute("PRAGMA journal_mode=WAL")
+            self._connection.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS deployments (
+                    id TEXT PRIMARY KEY,
+                    document TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS endpoints (
+                    id TEXT PRIMARY KEY,
+                    deployment_id TEXT NOT NULL UNIQUE,
+                    document TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS deployment_drafts (
+                    id TEXT PRIMARY KEY,
+                    document TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS deployment_execution_evidence (
+                    deployment_id TEXT PRIMARY KEY,
+                    execution_ref TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS idempotency (
+                    scope TEXT NOT NULL,
+                    key TEXT NOT NULL,
+                    request_hash TEXT NOT NULL,
+                    resource_id TEXT NOT NULL,
+                    PRIMARY KEY(scope, key)
+                );
+                """
+            )
+            self._migrate_execution_evidence()
+
+    def _migrate_execution_evidence(self) -> None:
+        """Move legacy public execution refs into the private evidence table.
+
+        将旧公共执行引用迁移到私有证据表。
+        """
+
+        rows = self._connection.execute("SELECT id, document FROM deployments").fetchall()
+        for row in rows:
+            document = json.loads(row["document"])
+            execution_ref = document.pop("engineExecutionRef", None)
+            if not isinstance(execution_ref, str) or not execution_ref:
+                continue
+            self._connection.execute(
+                "INSERT OR IGNORE INTO deployment_execution_evidence"
+                "(deployment_id, execution_ref) VALUES (?, ?)",
+                (row["id"], execution_ref),
+            )
+            self._connection.execute(
+                "UPDATE deployments SET document = ? WHERE id = ?",
+                (json.dumps(document, separators=(",", ":")), row["id"]),
+            )
+
+    def close(self) -> None:
+        """Close the database connection. | 关闭数据库连接。"""
+
+        with self._lock:
+            self._connection.close()
+
+    def create_draft(self, draft: DeploymentDraft, key: str, digest: str) -> DeploymentDraft:
+        """Commit a draft and its replay receipt together. | 原子持久化草稿与幂等记录。"""
+        with self._lock, self._connection:
+            row = self._connection.execute(
+                "SELECT request_hash, resource_id FROM idempotency "
+                "WHERE scope = 'deployment-draft' AND key = ?",
+                (key,),
+            ).fetchone()
+            if row is not None:
+                if row["request_hash"] != digest:
+                    raise ReactorProductError(
+                        code="REACTOR_IDEMPOTENCY_CONFLICT",
+                        title="Draft request conflict",
+                        detail="This handoff key already identifies another request.",
+                        status=409,
+                    )
+                return self.get_draft(UUID(row["resource_id"]))
+            self._connection.execute(
+                "INSERT INTO deployment_drafts(id, document) VALUES (?, ?)",
+                (str(draft.id), draft.model_dump_json(exclude_none=True)),
+            )
+            self._connection.execute(
+                "INSERT INTO idempotency(scope, key, request_hash, resource_id) "
+                "VALUES ('deployment-draft', ?, ?, ?)",
+                (key, digest, str(draft.id)),
+            )
+        return draft
+
+    def save_draft(self, draft: DeploymentDraft) -> None:
+        """Persist the draft's explicit deployment receipt. | 保存显式部署回执。"""
+        with self._lock, self._connection:
+            self._connection.execute(
+                "INSERT OR REPLACE INTO deployment_drafts(id, document) VALUES (?, ?)",
+                (str(draft.id), draft.model_dump_json(exclude_none=True)),
+            )
+
+    def get_draft(self, identifier: UUID) -> DeploymentDraft:
+        """Read an imported draft by Product identity. | 按产品身份读取草稿。"""
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT document FROM deployment_drafts WHERE id = ?",
+                (str(identifier),),
+            ).fetchone()
+        if row is None:
+            raise ReactorProductError(
+                code="REACTOR_DRAFT_NOT_FOUND",
+                title="Deployment draft not found",
+                detail="The selected deployment draft does not exist.",
+                status=404,
+            )
+        return DeploymentDraft.model_validate_json(row["document"])
+
+    def list_drafts(self) -> list[DeploymentDraft]:
+        """List preparations without starting them. | 列出草稿但不启动。"""
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT document FROM deployment_drafts ORDER BY rowid DESC"
+            ).fetchall()
+        return [DeploymentDraft.model_validate_json(row["document"]) for row in rows]
+
+    def save_deployment(self, deployment: Deployment) -> None:
+        """Upsert a Deployment. | 写入 Deployment。"""
+
+        document = deployment.model_dump_json(by_alias=True, exclude_none=True)
+        with self._lock, self._connection:
+            self._connection.execute(
+                "INSERT OR REPLACE INTO deployments(id, document) VALUES (?, ?)",
+                (str(deployment.id), document),
+            )
+
+    def save_pair(
+        self,
+        deployment: Deployment,
+        endpoint: Endpoint,
+        *,
+        execution_ref: str | None = None,
+    ) -> None:
+        """Atomically commit Deployment and Endpoint observations. | 原子提交两个资源。"""
+
+        deployment_document = deployment.model_dump_json(by_alias=True, exclude_none=True)
+        endpoint_document = endpoint.model_dump_json(by_alias=True, exclude_none=True)
+        with self._lock, self._connection:
+            self._connection.execute(
+                "INSERT OR REPLACE INTO deployments(id, document) VALUES (?, ?)",
+                (str(deployment.id), deployment_document),
+            )
+            self._connection.execute(
+                """
+                INSERT OR REPLACE INTO endpoints(id, deployment_id, document)
+                VALUES (?, ?, ?)
+                """,
+                (str(endpoint.id), str(endpoint.deployment_id), endpoint_document),
+            )
+            if execution_ref is not None:
+                self._connection.execute(
+                    "INSERT OR REPLACE INTO deployment_execution_evidence"
+                    "(deployment_id, execution_ref) VALUES (?, ?)",
+                    (str(deployment.id), execution_ref),
+                )
+
+    def get_execution_ref(self, deployment_id: UUID) -> str | None:
+        """Read internal execution evidence without Product exposure.
+
+        读取不会暴露到产品 JSON 的内部执行证据。
+        """
+
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT execution_ref FROM deployment_execution_evidence WHERE deployment_id = ?",
+                (str(deployment_id),),
+            ).fetchone()
+        return str(row["execution_ref"]) if row else None
+
+    def get_deployment(self, deployment_id: UUID) -> Deployment | None:
+        """Read a Deployment. | 读取 Deployment。"""
+
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT document FROM deployments WHERE id = ?", (str(deployment_id),)
+            ).fetchone()
+        return Deployment.model_validate_json(row["document"]) if row else None
+
+    def list_deployments(self) -> list[Deployment]:
+        """Read persisted resources for recovery and Open in navigation. | 列出现有资源。"""
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT document FROM deployments ORDER BY rowid DESC"
+            ).fetchall()
+        return [Deployment.model_validate_json(row["document"]) for row in rows]
+
+    def create_intent(self, deployment: Deployment, key: str | None, digest: str) -> str | None:
+        """Persist intent and retry identity atomically before execution. | 原子创建意图。"""
+        with self._lock, self._connection:
+            replay = self.resolve_idempotency(key, digest)
+            if replay is not None:
+                return replay
+            self._connection.execute(
+                "INSERT INTO deployments(id, document) VALUES (?, ?)",
+                (str(deployment.id), deployment.model_dump_json(exclude_none=True)),
+            )
+            if key is not None:
+                self._connection.execute(
+                    "INSERT INTO idempotency(scope, key, request_hash, resource_id) "
+                    "VALUES ('create-deployment', ?, ?, ?)",
+                    (key, digest, str(deployment.id)),
+                )
+        return None
+
+    def get_endpoint(self, endpoint_id: UUID) -> Endpoint | None:
+        """Read an Endpoint. | 读取 Endpoint。"""
+
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT document FROM endpoints WHERE id = ?", (str(endpoint_id),)
+            ).fetchone()
+        return Endpoint.model_validate_json(row["document"]) if row else None
+
+    def resolve_idempotency(self, key: str | None, digest: str) -> str | None:
+        """Resolve replay or reject conflicting key reuse. | 解析幂等重放。"""
+
+        if key is None:
+            return None
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT request_hash, resource_id FROM idempotency "
+                "WHERE scope = 'create-deployment' AND key = ?",
+                (key,),
+            ).fetchone()
+        if row is None:
+            return None
+        if row["request_hash"] != digest:
+            raise ReactorProductError(
+                code="REACTOR_IDEMPOTENCY_CONFLICT",
+                title="Idempotency key conflict",
+                detail="The Idempotency-Key was already used with a different request body.",
+                status=409,
+            )
+        return str(row["resource_id"])
+
+    def remember_idempotency(self, key: str | None, digest: str, resource_id: UUID) -> None:
+        """Persist a create-command resource mapping. | 持久化创建命令资源映射。"""
+
+        if key is None:
+            return
+        with self._lock, self._connection:
+            self._connection.execute(
+                "INSERT INTO idempotency(scope, key, request_hash, resource_id) "
+                "VALUES ('create-deployment', ?, ?, ?)",
+                (key, digest, str(resource_id)),
+            )

@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cy-exec-pro"
+version = "0.1.0"
+description = "Optional Pro extensions for the CY-LLM execution layer."
+license = "Apache-2.0"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "cy-exec>=0.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "hypothesis>=6.100.0",
+    "pytest>=7.4.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

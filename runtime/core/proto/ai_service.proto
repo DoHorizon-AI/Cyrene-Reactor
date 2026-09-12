@@ -1,0 +1,63 @@
+// Reactor inference-only compatibility wire.
+//
+// Training, custom-script execution, Node Agent control, hardware facts, and
+// generic process lifecycle are deliberately absent. New public consumers use
+// the Reactor Product API; this wire remains scoped to the serving worker.
+syntax = "proto3";
+
+package cy.llm;
+
+message StreamMetadata {
+  string trace_id = 1;
+  string tenant = 2;
+  string player_id = 3;
+  string locale = 4;
+  map<string, string> extra = 5;
+}
+
+message GenerationParameters {
+  uint32 max_new_tokens = 1;
+  double temperature = 2;
+  double top_p = 3;
+  double repetition_penalty = 4;
+}
+
+message StreamPredictRequest {
+  string model_id = 1;
+  string prompt = 2;
+  string adapter = 3;
+  int32 priority = 4;
+  GenerationParameters generation = 5;
+  StreamMetadata metadata = 6;
+  string worker_hint = 7;
+}
+
+message StreamPredictResponse {
+  string trace_id = 1;
+  string chunk = 2;
+  bool end_of_stream = 3;
+  uint32 index = 4;
+  float ttft_ms = 5;
+  float tokens_per_sec = 6;
+}
+
+message ControlMessage {
+  string trace_id = 1;
+  string command = 2;
+  map<string, string> payload = 3;
+}
+
+message WorkerHealthRequest {
+  string trace_id = 1;
+}
+
+message WorkerHealthResponse {
+  bool healthy = 1;
+  map<string, string> metrics = 2;
+}
+
+service AiInference {
+  rpc StreamPredict(stream StreamPredictRequest) returns (stream StreamPredictResponse);
+  rpc Control(ControlMessage) returns (ControlMessage);
+  rpc Health(WorkerHealthRequest) returns (WorkerHealthResponse);
+}

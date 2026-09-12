@@ -1,0 +1,16 @@
+[package]
+name = "cyrene-reactor-host-placement"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+prost.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+cy-execution-fabric = { git = "https://github.com/DoHorizon-AI/Cyrene-Platform.git", rev = "c59be6f2bd82489fbe933dadff84fc589e00afd9" }
+cy-adapter-client = { git = "https://github.com/DoHorizon-AI/Cyrene-Platform.git", rev = "c59be6f2bd82489fbe933dadff84fc589e00afd9" }
+cy-kernel-contract = { git = "https://github.com/DoHorizon-AI/Cyrene-Platform.git", rev = "c59be6f2bd82489fbe933dadff84fc589e00afd9" }
+cy-manifest = { git = "https://github.com/DoHorizon-AI/Cyrene-Platform.git", rev = "c59be6f2bd82489fbe933dadff84fc589e00afd9" }
+cy-proto = { git = "https://github.com/DoHorizon-AI/Cyrene-Platform.git", rev = "c59be6f2bd82489fbe933dadff84fc589e00afd9" }

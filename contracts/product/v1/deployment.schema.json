@@ -1,0 +1,195 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.cyrene.dev/reactor/product/v1/deployment.schema.json",
+  "title": "Reactor Deployment v1",
+  "type": "object",
+  "required": [
+    "id",
+    "name",
+    "modelArtifact",
+    "composition",
+    "desiredState",
+    "observedState",
+    "servingBindingId",
+    "servingCapabilityType",
+    "createdAt",
+    "updatedAt",
+    "resourceVersion"
+  ],
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "name": {"type": "string", "minLength": 1, "maxLength": 200},
+    "modelArtifact": {"$ref": "#/$defs/artifactRef"},
+    "composition": {"enum": ["FULL_MODEL", "BASE_PLUS_LORA"]},
+    "modelVersion": {"$ref": "#/$defs/modelVersion"},
+    "desiredState": {"enum": ["ACTIVE", "STOPPED"]},
+    "observedState": {"enum": ["STARTING", "READY", "DEGRADED", "FAILED", "STOPPING", "STOPPED"]},
+    "servingBindingId": {"type": "string", "minLength": 1, "maxLength": 200},
+    "nodeRef": {
+      "type": "object",
+      "required": ["nodeId", "nodeEpoch"],
+      "properties": {
+        "nodeId": {"type": "string", "minLength": 1, "maxLength": 200},
+        "nodeEpoch": {"type": "integer", "minimum": 1}
+      },
+      "additionalProperties": false
+    },
+    "servingCapabilityType": {"const": "execution.engine.v1"},
+    "endpointId": {"type": "string", "format": "uuid"},
+    "failure": {"$ref": "#/$defs/failure"},
+    "createdAt": {"type": "string", "format": "date-time"},
+    "updatedAt": {"type": "string", "format": "date-time"},
+    "resourceVersion": {"type": "integer", "minimum": 1}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"observedState": {"const": "READY"}}},
+      "then": {"required": ["endpointId"]}
+    },
+    {
+      "if": {"properties": {"observedState": {"const": "FAILED"}}},
+      "then": {"required": ["failure"]}
+    },
+    {
+      "if": {
+        "required": ["composition"],
+        "properties": {"composition": {"const": "BASE_PLUS_LORA"}}
+      },
+      "then": {
+        "required": ["modelVersion"],
+        "properties": {
+          "modelVersion": {
+            "required": ["composition"],
+            "properties": {"composition": {"const": "BASE_PLUS_LORA"}}
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": ["composition", "modelVersion"],
+        "properties": {"composition": {"const": "FULL_MODEL"}}
+      },
+      "then": {
+        "properties": {
+          "modelVersion": {
+            "required": ["composition"],
+            "properties": {"composition": {"const": "FULL_MODEL"}}
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "artifactRef": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$id": "https://cy-llm.dev/schemas/manifests/artifact_ref.schema.json",
+      "title": "ArtifactRef",
+      "description": "Provider-neutral immutable reference to an artifact. Provider locations are resolved separately.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["uri", "digest", "size_bytes", "kind"],
+      "properties": {
+        "uri": {"type": "string", "pattern": "^artifact://sha256/[0-9a-f]{64}$"},
+        "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "size_bytes": {"type": "integer", "minimum": 0},
+        "kind": {"type": "string", "enum": ["generic", "model", "dataset", "checkpoint", "training_spec", "metrics", "merged", "quantized", "report"]},
+        "manifest_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+      }
+    },
+    "failure": {
+      "type": "object",
+      "required": ["code", "message", "retryable"],
+      "properties": {
+        "code": {"type": "string"},
+        "message": {"type": "string"},
+        "retryable": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    },
+    "modelVersion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "id", "composition", "tokenizer", "chatTemplate", "lineage"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^model-version://sha256/[0-9a-f]{64}$"},
+        "schemaVersion": {"const": "1"},
+        "composition": {"enum": ["FULL_MODEL", "BASE_PLUS_LORA"]},
+        "fullModelArtifact": {"$ref": "#/$defs/portableModelArtifact"},
+        "baseModel": {"$ref": "#/$defs/baseModel"},
+        "adapterArtifact": {"$ref": "#/$defs/portableModelArtifact"},
+        "tokenizer": {"$ref": "#/$defs/override"},
+        "chatTemplate": {"$ref": "#/$defs/override"},
+        "lineage": {"$ref": "#/$defs/lineage"}
+      },
+      "oneOf": [
+        {
+          "properties": {"composition": {"const": "FULL_MODEL"}},
+          "required": ["fullModelArtifact"],
+          "not": {"anyOf": [{"required": ["baseModel"]}, {"required": ["adapterArtifact"]}]}
+        },
+        {
+          "properties": {"composition": {"const": "BASE_PLUS_LORA"}},
+          "required": ["baseModel", "adapterArtifact"],
+          "not": {"required": ["fullModelArtifact"]}
+        }
+      ]
+    },
+    "baseModel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact", "source"],
+      "properties": {
+        "artifact": {"$ref": "#/$defs/portableModelArtifact"},
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["repository", "revision"],
+          "properties": {
+            "repository": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"},
+            "revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"}
+          }
+        }
+      }
+    },
+    "override": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "properties": {
+        "mode": {"enum": ["INHERIT", "OVERRIDE"]},
+        "artifact": {"$ref": "#/$defs/artifactRef"}
+      },
+      "oneOf": [
+        {"properties": {"mode": {"const": "INHERIT"}}, "not": {"required": ["artifact"]}},
+        {"required": ["artifact"], "properties": {"mode": {"const": "OVERRIDE"}}}
+      ]
+    },
+    "lineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "trainingRun": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:[^\\s]+$"},
+        "datasetVersion": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:[^\\s]+$"},
+        "inputArtifacts": {"type": "array", "items": {"$ref": "#/$defs/artifactRef"}},
+        "derivedFromModelVersion": {
+          "type": "string",
+          "pattern": "^model-version://sha256/[0-9a-f]{64}$"
+        }
+      }
+    },
+    "portableModelArtifact": {
+      "allOf": [
+        {"$ref": "#/$defs/artifactRef"},
+        {
+          "required": ["manifest_digest"],
+          "properties": {
+            "kind": {"const": "model"},
+            "manifest_digest": {"pattern": "^sha256:[0-9a-f]{64}$"}
+          }
+        }
+      ]
+    }
+  },
+  "additionalProperties": false
+}

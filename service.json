@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "id": "com.cyrene.service.reactor",
+  "name": "Reactor",
+  "service": "reactor",
+  "visibility": "public",
+  "distribution": "advanced-service-plugin",
+  "status": "migrated-runtime",
+  "core": {
+    "protocol_version": 1,
+    "minimum_core_version": "0.1.0",
+    "extension_points": [
+      "execution.engine.v1"
+    ]
+  },
+  "source_roots": [
+    "runtime/core",
+    "runtime/pro",
+    "product",
+    "components"
+  ],
+  "runtime": {
+    "core_package": "runtime/core/src/cy_exec",
+    "pro_package": "runtime/pro/src/cy_exec_pro",
+    "training_owner": "com.cyrene.service.yield",
+    "backup_policy": "historical-reference-only"
+  }
+}

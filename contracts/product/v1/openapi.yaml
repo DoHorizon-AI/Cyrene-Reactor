@@ -1,0 +1,1002 @@
+openapi: 3.1.2
+x-cyrene-contract-profile: product-http-v1
+info:
+  title: Cyrene Reactor Product API
+  version: 1.0.0
+  license:
+    name: Apache-2.0
+paths:
+  /api/v1/deployments:
+    post:
+      operationId: createDeployment
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDeploymentRequest'
+      responses:
+        '201':
+          description: Reconciled Deployment
+          content:
+            application/json:
+              schema:
+                $ref: ./deployment.schema.json
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+    get:
+      summary: List Deployments
+      operationId: list_deployments_api_v1_deployments_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Deployment'
+                title: Response List Deployments Api V1 Deployments Get
+        '403':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+  /api/v1/deployments/{deploymentId}:
+    get:
+      operationId: getDeployment
+      parameters:
+      - $ref: '#/components/parameters/DeploymentId'
+      responses:
+        '200':
+          description: Deployment after endpoint identity reconciliation
+          content:
+            application/json:
+              schema:
+                $ref: ./deployment.schema.json
+        '404':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+  /api/v1/deployments/{deploymentId}/actions/stop:
+    post:
+      operationId: stopDeployment
+      parameters:
+      - $ref: '#/components/parameters/DeploymentId'
+      responses:
+        '200':
+          description: Stopped Deployment
+          content:
+            application/json:
+              schema:
+                $ref: ./deployment.schema.json
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+  /api/v1/endpoints/{endpointId}:
+    get:
+      operationId: getEndpoint
+      parameters:
+      - name: endpointId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Endpoint resource
+          content:
+            application/json:
+              schema:
+                $ref: ./endpoint.schema.json
+        '404':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+  /api/v1/deployments/{deploymentId}/export:
+    get:
+      summary: Export Deployment
+      operationId: export_deployment_api_v1_deployments__deploymentId__export_get
+      parameters:
+      - name: deploymentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Deploymentid
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Export Deployment Api V1 Deployments  Deploymentid  Export
+                  Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+  /api/v1/deployments/{deploymentId}/actions/restart:
+    post:
+      summary: Restart
+      operationId: restart_api_v1_deployments__deploymentId__actions_restart_post
+      parameters:
+      - name: deploymentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Deploymentid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RestartRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Deployment'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+  /api/v1/serving-bindings:
+    get:
+      summary: Bindings
+      operationId: bindings_api_v1_serving_bindings_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  additionalProperties: true
+                  type: object
+                type: array
+                title: Response Bindings Api V1 Serving Bindings Get
+        '403':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+  /api/v1/serving-bindings/{binding_id}/node:
+    get:
+      summary: Node
+      operationId: node_api_v1_serving_bindings__binding_id__node_get
+      parameters:
+      - name: binding_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Binding Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Node Api V1 Serving Bindings  Binding Id  Node Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+  /api/v1/serving-bindings/{binding_id}/model-imports:
+    post:
+      summary: Import Model
+      operationId: import_model_api_v1_serving_bindings__binding_id__model_imports_post
+      parameters:
+      - name: binding_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Binding Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelImportRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Import Model Api V1 Serving Bindings  Binding Id  Model
+                  Imports Post
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+  /api/v1/exchange-receivers:
+    get:
+      summary: Receivers
+      operationId: receivers_api_v1_exchange_receivers_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  additionalProperties: true
+                  type: object
+                type: array
+                title: Response Receivers Api V1 Exchange Receivers Get
+        '403':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+  /api/v1/endpoints/{endpointId}/actions/send-to-exchange:
+    post:
+      summary: Send To Exchange
+      operationId: send_to_exchange_api_v1_endpoints__endpointId__actions_send_to_exchange_post
+      parameters:
+      - name: endpointId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Endpointid
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            maxLength: 200
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendToExchangeRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Send To Exchange Api V1 Endpoints  Endpointid  Actions
+                  Send To Exchange Post
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+  /api/v1/deployments/{deploymentId}/model-export:
+    get:
+      summary: Export Model
+      operationId: export_model_api_v1_deployments__deploymentId__model_export_get
+      parameters:
+      - name: deploymentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Deploymentid
+      responses:
+        '200':
+          description: Complete standard Hugging Face model directory, including upstream
+            license
+          content:
+            application/x-tar:
+              schema:
+                type: string
+                format: binary
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+  /api/v1/deployment-drafts:
+    $ref: './lifecycle.openapi.yaml#/paths/~1api~1v1~1deployment-drafts'
+  /api/v1/deployment-drafts/{draft_id}:
+    $ref: './lifecycle.openapi.yaml#/paths/~1api~1v1~1deployment-drafts~1{draft_id}'
+  /api/v1/deployment-drafts/{draft_id}/actions/deploy:
+    $ref: './lifecycle.openapi.yaml#/paths/~1api~1v1~1deployment-drafts~1{draft_id}~1actions~1deploy'
+components:
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 200
+    DeploymentId:
+      name: deploymentId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  responses:
+    Problem:
+      description: RFC 9457 Problem Details
+      content:
+        application/problem+json:
+          schema:
+            $ref: ./generated/common/problem-details.schema.json
+  schemas:
+    CreateDeploymentRequest:
+      properties:
+        name:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Name
+        modelArtifact:
+          $ref: '#/components/schemas/ArtifactRef'
+        composition:
+          type: string
+          enum:
+          - FULL_MODEL
+          - BASE_PLUS_LORA
+          default: FULL_MODEL
+        modelVersion:
+          $ref: '#/components/schemas/ModelVersion'
+        servingBindingId:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Servingbindingid
+        nodeRef:
+          anyOf:
+          - $ref: '#/components/schemas/NodeRef'
+          - type: 'null'
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      - servingBindingId
+      title: CreateDeploymentRequest
+      description: Create-Deployment command. | 创建 Deployment 请求。
+      allOf:
+      - if:
+          required:
+          - composition
+          properties:
+            composition:
+              const: BASE_PLUS_LORA
+        then:
+          required:
+          - modelVersion
+          properties:
+            modelVersion:
+              required:
+              - composition
+              properties:
+                composition:
+                  const: BASE_PLUS_LORA
+      - if:
+          required:
+          - composition
+          - modelVersion
+          properties:
+            composition:
+              const: FULL_MODEL
+        then:
+          properties:
+            modelVersion:
+              required:
+              - composition
+              properties:
+                composition:
+                  const: FULL_MODEL
+    ArtifactRef:
+      properties:
+        uri:
+          type: string
+          pattern: ^artifact://sha256/[0-9a-f]{64}$
+          title: Uri
+        digest:
+          type: string
+          pattern: ^sha256:[0-9a-f]{64}$
+          title: Digest
+        size_bytes:
+          type: integer
+          minimum: 0.0
+          title: Size Bytes
+        kind:
+          type: string
+          enum:
+          - generic
+          - model
+          - dataset
+          - checkpoint
+          - training_spec
+          - metrics
+          - merged
+          - quantized
+          - report
+          title: Kind
+        manifest_digest:
+          anyOf:
+          - type: string
+            pattern: ^sha256:[0-9a-f]{64}$
+          - type: 'null'
+          title: Manifest Digest
+      additionalProperties: false
+      type: object
+      required:
+      - uri
+      - digest
+      - size_bytes
+      - kind
+      title: ArtifactRef
+      description: Generated projection of the canonical Platform ArtifactRef. | 平台制品引用投影。
+    Deployment:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Name
+        modelArtifact:
+          $ref: '#/components/schemas/ArtifactRef'
+        composition:
+          type: string
+          enum:
+          - FULL_MODEL
+          - BASE_PLUS_LORA
+          default: FULL_MODEL
+        modelVersion:
+          $ref: '#/components/schemas/ModelVersion'
+        desiredState:
+          $ref: '#/components/schemas/DesiredState'
+        observedState:
+          $ref: '#/components/schemas/ObservedState'
+        servingBindingId:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Servingbindingid
+        nodeRef:
+          anyOf:
+          - $ref: '#/components/schemas/NodeRef'
+          - type: 'null'
+        servingCapabilityType:
+          type: string
+          const: execution.engine.v1
+          title: Servingcapabilitytype
+          default: execution.engine.v1
+        endpointId:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Endpointid
+        failure:
+          anyOf:
+          - $ref: '#/components/schemas/ProductFailure'
+          - type: 'null'
+        createdAt:
+          type: string
+          format: date-time
+          title: Createdat
+        updatedAt:
+          type: string
+          format: date-time
+          title: Updatedat
+        resourceVersion:
+          type: integer
+          minimum: 1.0
+          title: Resourceversion
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - name
+      - modelArtifact
+      - composition
+      - desiredState
+      - observedState
+      - servingBindingId
+      - createdAt
+      - updatedAt
+      - resourceVersion
+      title: Deployment
+      description: Durable Product deployment intent and observation. | 持久化部署意图与观测。
+      allOf:
+      - if:
+          required:
+          - composition
+          properties:
+            composition:
+              const: BASE_PLUS_LORA
+        then:
+          required:
+          - modelVersion
+          properties:
+            modelVersion:
+              required:
+              - composition
+              properties:
+                composition:
+                  const: BASE_PLUS_LORA
+      - if:
+          required:
+          - composition
+          - modelVersion
+          properties:
+            composition:
+              const: FULL_MODEL
+        then:
+          properties:
+            modelVersion:
+              required:
+              - composition
+              properties:
+                composition:
+                  const: FULL_MODEL
+    ModelVersion:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - schemaVersion
+      - composition
+      - tokenizer
+      - chatTemplate
+      - lineage
+      properties:
+        id:
+          type: string
+          pattern: ^model-version://sha256/[0-9a-f]{64}$
+        schemaVersion:
+          type: string
+          const: '1'
+        composition:
+          type: string
+          enum:
+          - FULL_MODEL
+          - BASE_PLUS_LORA
+        fullModelArtifact:
+          $ref: '#/components/schemas/PortableModelArtifact'
+        baseModel:
+          $ref: '#/components/schemas/ModelVersionBaseModel'
+        adapterArtifact:
+          $ref: '#/components/schemas/PortableModelArtifact'
+        tokenizer:
+          $ref: '#/components/schemas/ModelVersionOverride'
+        chatTemplate:
+          $ref: '#/components/schemas/ModelVersionOverride'
+        lineage:
+          $ref: '#/components/schemas/ModelVersionLineage'
+      oneOf:
+      - properties:
+          composition:
+            const: FULL_MODEL
+        required:
+        - fullModelArtifact
+        not:
+          anyOf:
+          - required:
+            - baseModel
+          - required:
+            - adapterArtifact
+      - properties:
+          composition:
+            const: BASE_PLUS_LORA
+        required:
+        - baseModel
+        - adapterArtifact
+        not:
+          required:
+          - fullModelArtifact
+      description: Canonical immutable Yield ModelVersion projection. | Yield 不可变模型版本投影。
+    ModelVersionBaseModel:
+      type: object
+      additionalProperties: false
+      required:
+      - artifact
+      - source
+      properties:
+        artifact:
+          $ref: '#/components/schemas/PortableModelArtifact'
+        source:
+          type: object
+          additionalProperties: false
+          required:
+          - repository
+          - revision
+          properties:
+            repository:
+              type: string
+              pattern: ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$
+            revision:
+              type: string
+              pattern: ^[0-9a-f]{40}$
+    ModelVersionOverride:
+      type: object
+      additionalProperties: false
+      required:
+      - mode
+      properties:
+        mode:
+          type: string
+          enum:
+          - INHERIT
+          - OVERRIDE
+        artifact:
+          $ref: '#/components/schemas/ArtifactRef'
+      oneOf:
+      - properties:
+          mode:
+            const: INHERIT
+        not:
+          required:
+          - artifact
+      - properties:
+          mode:
+            const: OVERRIDE
+        required:
+        - artifact
+    ModelVersionLineage:
+      type: object
+      additionalProperties: false
+      properties:
+        trainingRun:
+          type: string
+          pattern: '^[A-Za-z][A-Za-z0-9+.-]*:[^\s]+$'
+        datasetVersion:
+          type: string
+          pattern: '^[A-Za-z][A-Za-z0-9+.-]*:[^\s]+$'
+        inputArtifacts:
+          type: array
+          items:
+            $ref: '#/components/schemas/ArtifactRef'
+        derivedFromModelVersion:
+          type: string
+          pattern: ^model-version://sha256/[0-9a-f]{64}$
+    PortableModelArtifact:
+      allOf:
+      - $ref: '#/components/schemas/ArtifactRef'
+      - required:
+        - manifest_digest
+        properties:
+          kind:
+            const: model
+          manifest_digest:
+            pattern: ^sha256:[0-9a-f]{64}$
+    DesiredState:
+      type: string
+      enum:
+      - ACTIVE
+      - STOPPED
+      title: DesiredState
+      description: User-owned Deployment intent. | 用户声明的 Deployment 意图。
+    Endpoint:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        deploymentId:
+          type: string
+          format: uuid
+          title: Deploymentid
+        state:
+          $ref: '#/components/schemas/EndpointState'
+        url:
+          type: string
+          title: Url
+        model:
+          anyOf:
+          - type: string
+            minLength: 1
+          - type: 'null'
+          title: Model
+        protocol:
+          type: string
+          const: openai.chat.v1
+          title: Protocol
+          default: openai.chat.v1
+        createdAt:
+          type: string
+          format: date-time
+          title: Createdat
+        updatedAt:
+          type: string
+          format: date-time
+          title: Updatedat
+        resourceVersion:
+          type: integer
+          minimum: 1.0
+          title: Resourceversion
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - deploymentId
+      - state
+      - url
+      - createdAt
+      - updatedAt
+      - resourceVersion
+      title: Endpoint
+      description: Addressable serving surface, separate from Deployment. | 独立可寻址服务面。
+    EndpointState:
+      type: string
+      enum:
+      - PROVISIONING
+      - READY
+      - UNHEALTHY
+      - RETIRED
+      title: EndpointState
+      description: Endpoint lifecycle independent of Deployment intent. | Endpoint
+        生命周期。
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    ModelImportRequest:
+      properties:
+        repository:
+          type: string
+          title: Repository
+        revision:
+          type: string
+          title: Revision
+      additionalProperties: false
+      type: object
+      required:
+      - repository
+      - revision
+      title: ModelImportRequest
+      description: Immutable external model source, independent of producer Product.
+        | 外部模型来源。
+    NodeRef:
+      properties:
+        nodeId:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Nodeid
+        nodeEpoch:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Nodeepoch
+      additionalProperties: false
+      type: object
+      required:
+      - nodeId
+      - nodeEpoch
+      title: NodeRef
+      description: Projection of the canonical Node identity and epoch. | 节点身份与纪元投影。
+    ObservedState:
+      type: string
+      enum:
+      - STARTING
+      - READY
+      - DEGRADED
+      - FAILED
+      - STOPPING
+      - STOPPED
+      title: ObservedState
+      description: Reactor-owned reconciled Deployment observation. | Reactor 观测状态。
+    ProductFailure:
+      properties:
+        code:
+          type: string
+          title: Code
+        message:
+          type: string
+          title: Message
+        retryable:
+          type: boolean
+          title: Retryable
+      additionalProperties: false
+      type: object
+      required:
+      - code
+      - message
+      - retryable
+      title: ProductFailure
+      description: Failure persisted on Deployment state. | Deployment 持久化失败。
+    RestartRequest:
+      properties:
+        nodeRef:
+          $ref: '#/components/schemas/NodeRef'
+        resourceVersion:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Resourceversion
+      additionalProperties: false
+      type: object
+      required:
+      - nodeRef
+      - resourceVersion
+      title: RestartRequest
+      description: Restart requires refreshed identity and current Product version.
+        | 重启确认。
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+    SendToExchangeRequest:
+      properties:
+        resourceVersion:
+          type: integer
+          minimum: 1.0
+          title: Resourceversion
+        receiverId:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Receiverid
+        gatewayEndpointId:
+          type: string
+          format: uuid
+          title: Gatewayendpointid
+        targetBindingId:
+          type: string
+          maxLength: 300
+          minLength: 1
+          title: Targetbindingid
+        modelPattern:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Modelpattern
+        priority:
+          type: integer
+          maximum: 10000.0
+          minimum: 0.0
+          title: Priority
+          default: 100
+      additionalProperties: false
+      type: object
+      required:
+      - resourceVersion
+      - receiverId
+      - gatewayEndpointId
+      - targetBindingId
+      - modelPattern
+      title: SendToExchangeRequest
+      description: Explicit receiver draft intent bound to an inspected Endpoint.
+        | 显式发送草稿。
+  securitySchemes:
+    ControlBearer:
+      type: http
+      scheme: bearer
+security:
+- ControlBearer: []

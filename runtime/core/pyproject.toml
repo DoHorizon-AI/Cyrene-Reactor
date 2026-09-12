@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cy-exec"
+version = "0.1.0"
+description = "CY-LLM execution layer and canonical protocol bindings."
+license = "Apache-2.0"
+requires-python = ">=3.12"
+dependencies = [
+    # Plugins-owned direct transport; keep the Product runtime independent of sibling checkouts.
+    "cyrene-plugin-runtime @ git+https://github.com/DoHorizon-AI/Cyrene-Plugins-Official.git@c3f75689ebb10b2e07b3816310e768d74ae6cc10#subdirectory=sdk/python/cyrene_plugin_runtime",
+    "grpcio==1.83.0",
+    "grpcio-tools==1.83.0",
+    "protobuf==7.36.0",
+    "pydantic>=2.0.0,<3.0.0",
+    "pydantic-settings>=2.0.0,<3.0.0",
+    "PyYAML>=6.0",
+    "packaging>=23.0",
+    "psutil>=5.9.0",
+    "watchdog>=3.0.0",
+]
+
+[project.scripts]
+cy-exec = "cy_exec.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.uv]
+override-dependencies = [
+    "grpcio==1.83.0",
+    "grpcio-tools==1.83.0",
+    "protobuf==7.36.0",
+]
+
+[tool.setuptools.package-data]
+cy_exec = ["proto/*.pyi"]
