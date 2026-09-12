@@ -51,12 +51,13 @@ jobs:
           test ! -d runtime/core/src/cy_exec/cache
           test ! -d runtime/pro/src/cy_exec_pro/engines/cache
           test ! -d components/scheduler-rs
-          if rg -n '^(from|import) (torch|transformers|vllm|tensorrt|mindie|safetensors)(\.| |$)' \
+          if grep -R -n -E --include='*.py' \
+            '^(from|import) (torch|transformers|vllm|tensorrt|mindie|safetensors)(\.| |$)' \
             runtime/core/src runtime/pro/src product/src; then
             echo 'Concrete model/runtime implementations belong in Cyrene-Plugins-Official.' >&2
             exit 1
           fi
-          if rg -n 'AiTraining|gateway\.cache\.v1|PromptCache|KVCacheManager' \
+          if grep -R -n -E 'AiTraining|gateway\.cache\.v1|PromptCache|KVCacheManager' \
             runtime/core/proto runtime/core/src runtime/pro/src product/src; then
             echo 'Training and cache implementations do not belong in Reactor.' >&2
             exit 1
