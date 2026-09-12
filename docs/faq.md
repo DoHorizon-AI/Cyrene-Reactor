@@ -20,7 +20,7 @@ Follow `CREATED → CONFIGURED → LOADING → READY → SERVING → DRAINING �
 
 ## Who owns hardware facts and memory policy? / 谁负责硬件事实与内存策略？
 
-Platform Node Agent owns canonical hardware facts and Platform owns generic resource leases. Reactor owns serving admission, bounded queueing, and loaded-model residency/eviction policy using reported observations. Engine Plugins own concrete KV allocation and memory-pool behavior; gateway cache Plugins own prompt/response caching.
+Platform Node Agent owns canonical hardware facts and Platform owns generic resource leases. Reactor owns serving admission, bounded queueing, loaded-model identity, and explicit unload policy. It may aggregate observations reported by selected Plugins, but it does not probe hardware or release device memory itself. Engine Plugins own concrete KV allocation and memory-pool behavior; gateway cache Plugins own prompt/response caching.
 
 Platform Node Agent 负责标准硬件事实，Platform 负责通用资源租约。Reactor 负责服务准入、有界排队以及基于上报事实的模型驻留/驱逐策略；引擎插件负责具体 KV 分配与内存池，网关缓存插件负责 Prompt/响应缓存。
 

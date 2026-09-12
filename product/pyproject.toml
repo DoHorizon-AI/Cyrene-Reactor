@@ -14,7 +14,7 @@ dependencies = [
   "httpx==0.28.1",
   "uvicorn==0.52.4",
   "cyrene-artifacts @ git+https://github.com/DoHorizon-AI/Cyrene-Platform.git@c59be6f2bd82489fbe933dadff84fc589e00afd9#subdirectory=sdk/python/cyrene_artifacts",
-  "cyrene-yield-contracts @ git+https://github.com/DoHorizon-AI/Cyrene-Yield.git@310c2f7fc256f3d34f490c47e63d9d553b6dfc1d#subdirectory=sdk/python/cyrene_yield_contracts",
+  "cyrene-yield-contracts @ git+https://github.com/DoHorizon-AI/Cyrene-Yield.git@6fea8f835ce2561aaed4b0d9996856f6a3ef1ee6#subdirectory=sdk/python/cyrene_yield_contracts",
 ]
 
 [project.scripts]

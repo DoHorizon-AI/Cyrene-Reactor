@@ -79,7 +79,7 @@ class AiInferenceServicerImpl(AiInferenceServicer):
     ) -> None:
         self._server = inference_server
         self._config = config or load_worker_config()
-        self._telemetry = telemetry or Telemetry()
+        self._telemetry = telemetry or inference_server.telemetry
 
     def StreamPredict(
         self,

@@ -38,13 +38,12 @@ metadata; the lockfiles remain the reproducible version source.
 | `pydantic-settings` | `2.15.0` | `MIT` | PyPI settings loading. |
 | `PyYAML` | `6.0.3` | `MIT` | PyPI YAML parsing. |
 | `packaging` | `26.3` | `Apache-2.0 OR BSD-2-Clause` | PyPI version and requirement parsing. |
-| `psutil` | `7.2.2` | `BSD-3-Clause` | PyPI process and host observations. |
 | `watchdog` | `6.0.0` | `Apache-2.0` | PyPI file-watch support. |
 | `fastapi` | `0.141.1` | `MIT` | Product HTTP API. |
 | `httpx` | `0.28.1` | `BSD-3-Clause` | Product HTTP client and tests. |
 | `uvicorn` | `0.52.4` | `BSD-3-Clause` | Product ASGI server. |
 | `cyrene-artifacts` | `0.1.0`, Platform `c59be6f2bd82489fbe933dadff84fc589e00afd9` | `Apache-2.0` | Platform-owned ArtifactRef SDK; exact git revision is locked in `product/uv.lock`. |
-| `cyrene-yield-contracts` | `0.1.0`, Yield `310c2f7fc256f3d34f490c47e63d9d553b6dfc1d` | `Apache-2.0` | Yield-owned contract SDK; exact git revision is locked in `product/uv.lock`. |
+| `cyrene-yield-contracts` | `0.1.0`, Yield `6fea8f835ce2561aaed4b0d9996856f6a3ef1ee6` | `Apache-2.0` | Yield-owned contract SDK; exact git revision is locked in `product/uv.lock`. |
 
 ### Development-only / 仅开发环境
 

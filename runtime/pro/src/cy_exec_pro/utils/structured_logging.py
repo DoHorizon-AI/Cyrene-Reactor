@@ -2,9 +2,9 @@
 # ┌─────────────────────────────────────────────────────────────────────┐
 # │ 📄 runtime/pro/src/cy_exec_pro/utils/structured_logging.py
 # │ Module: runtime/pro/src/cy_exec_pro/utils/structured_logging
-# │ Role: Optional Reactor Pro runtime — adds relay, hardware, cache, LoRA, and coordination extensions.
+# │ Role: Optional structured logging for Reactor Product events.
 # │
-# │ 模块职责：Reactor 可选 Pro 运行时——提供中继、硬件、缓存、LoRA 与协调扩展。
+# │ 模块职责：为 Reactor Product 事件提供可选结构化日志。
 # └─────────────────────────────────────────────────────────────────────┘
 
 

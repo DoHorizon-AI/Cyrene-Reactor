@@ -1,6 +1,6 @@
 {
   "repository": "DoHorizon-AI/Cyrene-Yield",
-  "revision": "310c2f7fc256f3d34f490c47e63d9d553b6dfc1d",
+  "revision": "6fea8f835ce2561aaed4b0d9996856f6a3ef1ee6",
   "sha256": {
     "contracts/product/v1/model-version.schema.json": "b8287ab4558581a2534dee254925c42cb58a09da82f5dd08d4eee1762aafe6b4"
   },

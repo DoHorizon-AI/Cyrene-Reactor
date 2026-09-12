@@ -2,20 +2,19 @@
 # ┌─────────────────────────────────────────────────────────────────────┐
 # │ 📄 runtime/pro/src/cy_exec_pro/core/alert_manager.py
 # │ Module: runtime/pro/src/cy_exec_pro/core/alert_manager
-# │ Role: Optional Reactor Pro runtime — adds relay, hardware, cache, LoRA, and coordination extensions.
+# │ Role: Optional Product alerts for queue, pressure, and latency signals.
 # │
-# │ 模块职责：Reactor 可选 Pro 运行时——提供中继、硬件、缓存、LoRA 与协调扩展。
+# │ 模块职责：为队列、资源压力与请求延迟提供可选 Product 告警。
 # └─────────────────────────────────────────────────────────────────────┘
-
 
 from __future__ import annotations
 
 import logging
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Callable, Dict, List, Optional
 
 LOGGER = logging.getLogger("cy_exec_pro.core.alert_manager")
 
@@ -31,7 +30,6 @@ class AlertLevel(Enum):
 class AlertType(Enum):
     """Supported monitored signals."""
 
-    GPU_UTILIZATION = "gpu_utilization"
     QUEUE_DEPTH = "queue_depth"
     MEMORY_PRESSURE = "memory_pressure"
     LATENCY_HIGH = "latency_high"
@@ -55,44 +53,26 @@ class AlertManager:
 
     def __init__(
         self,
-        gpu_utilization_threshold: float = 80.0,
         queue_depth_threshold: int = 100,
         memory_pressure_threshold: float = 90.0,
         latency_threshold_ms: float = 5000.0,
     ) -> None:
         self._lock = threading.Lock()
-        self._gpu_threshold = gpu_utilization_threshold
         self._queue_threshold = queue_depth_threshold
         self._memory_threshold = memory_pressure_threshold
         self._latency_threshold = latency_threshold_ms
-        self._alert_states: Dict[AlertType, bool] = {
-            alert_type: False for alert_type in AlertType
-        }
-        self._alert_history: List[Alert] = []
+        self._alert_states: dict[AlertType, bool] = {alert_type: False for alert_type in AlertType}
+        self._alert_history: list[Alert] = []
         self._max_history = 1000
-        self._callbacks: List[Callable[[Alert], None]] = []
+        self._callbacks: list[Callable[[Alert], None]] = []
         LOGGER.info(
-            "AlertManager initialized: GPU=%f%%, Queue=%d, Memory=%f%%, Latency=%fms",
-            gpu_utilization_threshold,
+            "AlertManager initialized: Queue=%d, Memory=%f%%, Latency=%fms",
             queue_depth_threshold,
             memory_pressure_threshold,
             latency_threshold_ms,
         )
 
-    def check_gpu_utilization(self, utilization: float) -> Optional[Alert]:
-        """Check GPU utilization against its threshold."""
-        return self._check(
-            AlertType.GPU_UTILIZATION,
-            utilization,
-            self._gpu_threshold,
-            AlertLevel.WARNING,
-            lambda value, threshold: (
-                f"GPU utilization too high: {value:.1f}% (threshold: {threshold}%)",
-                f"GPU utilization recovered: {value:.1f}%",
-            ),
-        )
-
-    def check_queue_depth(self, depth: int) -> Optional[Alert]:
+    def check_queue_depth(self, depth: int) -> Alert | None:
         """Check queue depth against its threshold."""
         return self._check(
             AlertType.QUEUE_DEPTH,
@@ -105,7 +85,7 @@ class AlertManager:
             ),
         )
 
-    def check_memory_pressure(self, pressure: float) -> Optional[Alert]:
+    def check_memory_pressure(self, pressure: float) -> Alert | None:
         """Check memory pressure against its threshold."""
         return self._check(
             AlertType.MEMORY_PRESSURE,
@@ -118,7 +98,7 @@ class AlertManager:
             ),
         )
 
-    def check_latency(self, latency_ms: float) -> Optional[Alert]:
+    def check_latency(self, latency_ms: float) -> Alert | None:
         """Check latency against its threshold."""
         return self._check(
             AlertType.LATENCY_HIGH,
@@ -138,7 +118,7 @@ class AlertManager:
         threshold: float,
         level: AlertLevel,
         messages: Callable[[float, float], tuple[str, str]],
-    ) -> Optional[Alert]:
+    ) -> Alert | None:
         """Apply common threshold, recovery, and callback behavior."""
         with self._lock:
             if value > threshold:
@@ -183,7 +163,7 @@ class AlertManager:
         with self._lock:
             return self._alert_states.get(alert_type, False)
 
-    def get_alert_history(self, limit: int = 100) -> List[Alert]:
+    def get_alert_history(self, limit: int = 100) -> list[Alert]:
         """Return up to ``limit`` recent alert events."""
         with self._lock:
             return self._alert_history[-limit:]
@@ -208,25 +188,4 @@ class AlertManager:
             self._alert_history.clear()
 
 
-_alert_manager: Optional[AlertManager] = None
-
-
-def get_alert_manager(
-    gpu_threshold: float = 80.0,
-    queue_threshold: int = 100,
-    memory_threshold: float = 90.0,
-    latency_threshold_ms: float = 5000.0,
-) -> AlertManager:
-    """Return the process-wide alert manager singleton."""
-    global _alert_manager
-    if _alert_manager is None:
-        _alert_manager = AlertManager(
-            gpu_utilization_threshold=gpu_threshold,
-            queue_depth_threshold=queue_threshold,
-            memory_pressure_threshold=memory_threshold,
-            latency_threshold_ms=latency_threshold_ms,
-        )
-    return _alert_manager
-
-
-__all__ = ["Alert", "AlertLevel", "AlertManager", "AlertType", "get_alert_manager"]
+__all__ = ["Alert", "AlertLevel", "AlertManager", "AlertType"]

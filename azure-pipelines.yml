@@ -9,7 +9,7 @@ parameters:
   default: c59be6f2bd82489fbe933dadff84fc589e00afd9
 - name: yieldRef
   type: string
-  default: 310c2f7fc256f3d34f490c47e63d9d553b6dfc1d
+  default: 6fea8f835ce2561aaed4b0d9996856f6a3ef1ee6
 # GitHub Actions owns Reactor's automatic source and contract checks. This Azure
 # definition is a manual supplemental lane for protected cross-repository or
 # deployment acceptance; concrete-engine GPU acceptance runs in Plugins.

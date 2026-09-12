@@ -13,7 +13,7 @@
 | **Serving Runtime** | `runtime/core` (`cy_exec`): Product coordinator with a fail-closed `DIRECT_PLUGIN` binding through the Plugins-owned `DirectPluginClient`; no concrete engine implementation | Unified, resilient inference serving worker with full dynamic batching and streaming |
 | **Lifecycle & Health** | State-aware health server (`/healthz`, `/metrics`), graceful draining, and cleanup on failed model load | First-class `WorkerControl` integration via Platform lifecycle channels |
 | **Scheduling & Backpressure** | Priority-aware `TaskScheduler` with queue limits and thread workers | Adaptive GPU admission control, token-bucket rate limiting, and request preemption |
-| **Memory Management** | Product eviction coordination over Plugin-reported observations; no hardware probing | Multi-model policy driven by Platform facts and Plugin observations |
+| **Model Residency** | Per-server registry of loaded Plugin handles, explicit unload, and optional Plugin-reported memory observations | Multi-model policy driven by Platform facts and Plugin observations |
 | **Pro Extensions** | `runtime/pro` (`cy_exec_pro`): Product-side alerts and structured logging only | Enterprise serving policy without concrete engine, cache, or provider implementations |
 | **Placement Integration** | `components/host-placement`: thin adapter to Platform-owned placement | Consume Platform placement facts without a second scheduler or allocator |
 
@@ -45,7 +45,7 @@ stateDiagram-v2
 4. **`READY` / `HEALTH` (`health_server.py`)**: `CORRECT` (Hardened) — Returns HTTP 200 when active; returns HTTP 503 Fail-Closed on error or shutdown.
 5. **`SERVE` (`stream_predict`)**: `CORRECT` — Enqueues to `TaskScheduler`, performs streaming inference, catches stream errors.
 6. **`DRAIN` / `STOP` (`InferenceServer.shutdown`)**: `CORRECT` (Hardened) — Sets `_is_shutting_down = True`, rejects new traffic, stops scheduler workers, unloads all active model handles.
-7. **`FAIL` / `CLEANUP`**: `CORRECT` (Hardened) — On load failure, immediately invokes `engine.unload_model()` to prevent leaked GPU context handles.
+7. **`FAIL` / `CLEANUP`**: `CORRECT` (Hardened) — On load failure, immediately invokes `engine.unload_model()` so the selected Plugin can release its runtime resources.
 
 ---
 
@@ -80,7 +80,8 @@ Serving data plane 不经过 Platform：Platform 解析出本地 `connection_ref
   - Workload resource lease lifecycle and capacity reservations.
   - *Platform does NOT own serving-specific KV Cache semantics.*
 - **`Cyrene-Reactor` owns**:
-  - Serving coordination and loaded-model residency/eviction policy using Plugin-reported observations.
+  - Serving coordination, loaded-model identity, and explicit unload policy.
+  - Aggregation of optional memory observations reported by selected Plugins.
   - Request admission control and queue backpressure.
 - **Engine Plugins (e.g. `vllm-engine`, `tensorrt-engine`) own**:
   - Concrete KV block allocation and PagedAttention kernel execution.

@@ -1,83 +1,30 @@
-"""
-test_constants.py
-constants.py 模块的单元测试
-"""
+"""Tests for active Reactor runtime constants."""
 # ┌─────────────────────────────────────────────────────────────────────┐
 # │ 📄 runtime/core/tests/test_constants.py
 # │ Module: runtime/core/tests/test_constants
-# │ Role: Core runtime test module — verifies the canonical inference worker behavior.
+# │ Role: Verify active gRPC and bounded-queue defaults.
 # │
-# │ 模块职责：核心运行时测试模块——验证标准推理工作器的行为。
+# │ 模块职责：验证仍在使用的 gRPC 与有界队列默认值。
 # └─────────────────────────────────────────────────────────────────────┘
 
-
-import pytest
-import sys
-import os
-
-# 添加 worker 目录到路径
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-
-from cy_exec.constants import (
-    GRPCDefaults,
-    MemoryDefaults,
-    UnitConversions,
-)
+from cy_exec import constants
+from cy_exec.constants import GRPCDefaults, QueueDefaults
 
 
-class TestGRPCDefaults:
-    """测试 gRPC 默认配置常量"""
-
-    def test_port_is_valid(self):
-        """端口应在有效范围内"""
-        assert 1 <= GRPCDefaults.PORT <= 65535
-        assert GRPCDefaults.PORT == 50051
-
-    def test_max_workers_positive(self):
-        """最大 worker 数应为正整数"""
-        assert GRPCDefaults.MAX_WORKERS > 0
-
-    def test_max_message_size_reasonable(self):
-        """消息大小应在合理范围"""
-        # 100MB
-        assert GRPCDefaults.MAX_MESSAGE_SIZE == 100 * 1024 * 1024
-
-    def test_timeout_positive(self):
-        """超时时间应为正数"""
-        assert GRPCDefaults.TIMEOUT_SECONDS > 0
+def test_grpc_defaults_are_valid() -> None:
+    assert 1 <= GRPCDefaults.PORT <= 65535
+    assert GRPCDefaults.MAX_MESSAGE_SIZE_BYTES == 100 * 1024 * 1024
+    assert GRPCDefaults.DEFAULT_WORKERS > 0
+    assert GRPCDefaults.KEEPALIVE_TIME_MS > GRPCDefaults.KEEPALIVE_TIMEOUT_MS
 
 
-class TestMemoryDefaults:
-    """测试内存管理默认配置"""
-
-    def test_gpu_threshold_valid_range(self):
-        """GPU 阈值应在 0-1 之间"""
-        assert 0 < MemoryDefaults.GPU_THRESHOLD <= 1.0
-        assert MemoryDefaults.GPU_THRESHOLD == 0.90
-
-    def test_cleanup_interval_positive(self):
-        """清理间隔应为正整数"""
-        assert MemoryDefaults.CLEANUP_INTERVAL > 0
-
-    def test_lock_cleanup_interval_positive(self):
-        """锁清理间隔应为正整数"""
-        assert MemoryDefaults.LOCK_CLEANUP_INTERVAL > 0
+def test_queue_default_is_bounded() -> None:
+    assert QueueDefaults.DEFAULT_SIZE > 0
 
 
-class TestUnitConversions:
-    """测试单位转换常量"""
-
-    def test_bytes_conversions(self):
-        """字节转换应正确"""
-        assert UnitConversions.KB == 1024
-        assert UnitConversions.MB == 1024 * 1024
-        assert UnitConversions.GB == 1024 * 1024 * 1024
-
-    def test_time_conversions(self):
-        """时间转换应正确"""
-        assert UnitConversions.MS_PER_SECOND == 1000
-        assert UnitConversions.NS_PER_MS == 1_000_000
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+def test_removed_hardware_and_compatibility_constants_do_not_return() -> None:
+    assert not hasattr(constants, "MemoryDefaults")
+    assert not hasattr(constants, "UnitConversions")
+    assert not hasattr(GRPCDefaults, "MAX_MESSAGE_SIZE")
+    assert not hasattr(GRPCDefaults, "MAX_WORKERS")
+    assert not hasattr(GRPCDefaults, "TIMEOUT_SECONDS")

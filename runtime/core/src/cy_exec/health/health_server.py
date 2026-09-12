@@ -27,14 +27,14 @@ class HealthHTTPServer(HTTPServer):
         server_address,
         RequestHandlerClass,
         health_checker: Optional[Callable[[], bool]] = None,
+        telemetry: Optional[Telemetry] = None,
     ):
         super().__init__(server_address, RequestHandlerClass)
         self.health_checker = health_checker
+        self.telemetry = telemetry
 
 
 class _HealthHandler(BaseHTTPRequestHandler):
-    telemetry = Telemetry() if Telemetry is not None else None
-
     def do_GET(self) -> None:  # noqa: N802
         if self.path not in ("/healthz", "/metrics"):
             self.send_response(404)
@@ -62,7 +62,8 @@ class _HealthHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(payload, ensure_ascii=True).encode("utf-8"))
             return
 
-        metrics = self.telemetry.export_prometheus() if self.telemetry else ""
+        telemetry = getattr(self.server, "telemetry", None)
+        metrics = telemetry.export_prometheus() if telemetry else ""
         self.send_response(200)
         self.send_header("Content-Type", "text/plain; version=0.0.4")
         self.end_headers()
@@ -84,7 +85,13 @@ class _HealthHandler(BaseHTTPRequestHandler):
 def start_health_server(
     port: Optional[int] = None,
     health_checker: Optional[Callable[[], bool]] = None,
+    telemetry: Optional[Telemetry] = None,
 ) -> HealthHTTPServer:
     target_port = 0 if port == 0 else (port or int(os.getenv("CY_LLM_HEALTH_PORT", "9090")))
-    server = HealthHTTPServer(("0.0.0.0", target_port), _HealthHandler, health_checker=health_checker)
+    server = HealthHTTPServer(
+        ("0.0.0.0", target_port),
+        _HealthHandler,
+        health_checker=health_checker,
+        telemetry=telemetry,
+    )
     return server

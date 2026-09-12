@@ -2,9 +2,9 @@
 # ┌─────────────────────────────────────────────────────────────────────┐
 # │ 📄 runtime/pro/src/cy_exec_pro/utils/__init__.py
 # │ Module: runtime/pro/src/cy_exec_pro/utils/__init__
-# │ Role: Optional Reactor Pro runtime — adds relay, hardware, cache, LoRA, and coordination extensions.
+# │ Role: Optional Reactor Product observability utilities.
 # │
-# │ 模块职责：Reactor 可选 Pro 运行时——提供中继、硬件、缓存、LoRA 与协调扩展。
+# │ 模块职责：提供可选的 Reactor Product 可观测性工具。
 # └─────────────────────────────────────────────────────────────────────┘
 
 

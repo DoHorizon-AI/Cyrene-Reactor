@@ -19,6 +19,8 @@ from unittest.mock import Mock, MagicMock, patch
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from cy_exec.config.models import WorkerConfig
+from cy_exec.core.telemetry import Telemetry
+from cy_exec.proto.ai_service_pb2 import WorkerHealthRequest
 
 
 class TestGRPCServicer:
@@ -32,6 +34,7 @@ class TestGRPCServicer:
         server.stream_predict = Mock(return_value=iter(["Hello", " ", "World"]))
         server.get_loaded_models = Mock(return_value=["model-1"])
         server.health_check = Mock(return_value=True)
+        server.telemetry = Telemetry()
         return server
 
     @pytest.fixture
@@ -87,6 +90,16 @@ class TestGRPCServicer:
         # 无 token 的请求
         # 取决于配置是否启用认证
 
+    def test_health_uses_inference_server_telemetry(self, servicer, mock_server):
+        mock_server.telemetry.track_request_start()
+        mock_server.telemetry.track_request_end(0.01, success=True)
+
+        response = servicer.Health(WorkerHealthRequest(trace_id="health"), Mock())
+
+        assert response.metrics["requests_inflight"] == "0.0"
+        assert response.metrics["requests_success"] == "1.0"
+        assert response.metrics["requests_failed"] == "0.0"
+
 
 class TestGRPCServicerErrorHandling:
     """测试 gRPC Servicer 错误处理"""
@@ -96,6 +109,7 @@ class TestGRPCServicerErrorHandling:
         """创建会抛出错误的 servicer"""
         mock_server = Mock()
         mock_server.stream_predict = Mock(side_effect=RuntimeError("Model error"))
+        mock_server.telemetry = Telemetry()
 
         with patch('cy_exec.grpc_servicer.InferenceServer', return_value=mock_server):
             from cy_exec.grpc_servicer import AiInferenceServicerImpl

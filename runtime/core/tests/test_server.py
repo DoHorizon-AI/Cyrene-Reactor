@@ -18,8 +18,8 @@ from unittest.mock import MagicMock, Mock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
+from cy_exec.core.memory_manager import ModelResidencyRegistry
 from cy_exec.core.server import InferenceServer
-from cy_exec.core.memory_manager import GPUMemoryManager
 
 
 class TestInferenceServer:
@@ -38,9 +38,10 @@ class TestInferenceServer:
     @pytest.fixture
     def server(self, mock_engine):
         """创建服务器实例"""
-        memory = GPUMemoryManager(threshold=0.9)
-        with patch("cy_exec.core.server.GPUMemoryManager", return_value=memory):
-            yield InferenceServer(engine_factory=Mock(return_value=mock_engine))
+        return InferenceServer(
+            engine_factory=Mock(return_value=mock_engine),
+            residency=ModelResidencyRegistry(),
+        )
 
     def test_initialization(self, server):
         """应正确初始化"""
@@ -155,17 +156,20 @@ class TestInferenceServerLifecycle:
 
     @staticmethod
     def _isolated_server(engine_factory):
-        memory = GPUMemoryManager(threshold=0.9)
+        residency = ModelResidencyRegistry()
         scheduler = Mock()
-        with patch("cy_exec.core.server.GPUMemoryManager", return_value=memory):
-            server = InferenceServer(engine_factory=engine_factory, scheduler=scheduler)
-        return server, memory, scheduler
+        server = InferenceServer(
+            engine_factory=engine_factory,
+            scheduler=scheduler,
+            residency=residency,
+        )
+        return server, residency, scheduler
 
     def test_successful_unload_unregisters_engine_and_allows_fresh_reload(self):
         first_engine = MagicMock()
         second_engine = MagicMock()
         engine_factory = Mock(side_effect=[first_engine, second_engine])
-        server, memory, _scheduler = self._isolated_server(engine_factory)
+        server, residency, _scheduler = self._isolated_server(engine_factory)
 
         assert server.ensure_model(
             "model", model_path="/valid/model", provider_id="fixture.engine"
@@ -175,7 +179,7 @@ class TestInferenceServerLifecycle:
         server.unload_model("model")
 
         first_engine.unload_model.assert_called_once_with()
-        assert memory.get_loaded_model("model") is None
+        assert residency.get_loaded_model("model") is None
         assert server.get_loaded_models() == []
         assert server.ensure_model(
             "model", model_path="/valid/model", provider_id="fixture.engine"
@@ -185,7 +189,7 @@ class TestInferenceServerLifecycle:
         engine = MagicMock()
         engine.unload_model.side_effect = RuntimeError("device cleanup failed")
         engine_factory = Mock(return_value=engine)
-        server, memory, _scheduler = self._isolated_server(engine_factory)
+        server, residency, _scheduler = self._isolated_server(engine_factory)
         server.ensure_model(
             "model", model_path="/valid/model", provider_id="fixture.engine"
         )
@@ -193,7 +197,7 @@ class TestInferenceServerLifecycle:
         with pytest.raises(RuntimeError, match="device cleanup failed"):
             server.unload_model("model")
 
-        assert memory.get_loaded_model("model") is engine
+        assert residency.get_loaded_model("model") is engine
         assert server.ensure_model(
             "model", model_path="/valid/model", provider_id="fixture.engine"
         ) is engine
@@ -203,7 +207,7 @@ class TestInferenceServerLifecycle:
         first_engine = MagicMock()
         second_engine = MagicMock()
         engine_factory = Mock(side_effect=[first_engine, second_engine])
-        server, memory, scheduler = self._isolated_server(engine_factory)
+        server, residency, scheduler = self._isolated_server(engine_factory)
         server.ensure_model(
             "first", model_path="/valid/first", provider_id="fixture.engine"
         )
@@ -216,7 +220,7 @@ class TestInferenceServerLifecycle:
         scheduler.shutdown.assert_called_once_with()
         first_engine.unload_model.assert_called_once_with()
         second_engine.unload_model.assert_called_once_with()
-        assert memory.get_loaded_models() == []
+        assert residency.get_loaded_models() == []
         assert server.get_loaded_models() == []
 
     def test_shutdown_transitions_and_rejection(self):

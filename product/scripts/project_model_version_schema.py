@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 YIELD_REPOSITORY = "DoHorizon-AI/Cyrene-Yield"
-YIELD_REVISION = "310c2f7fc256f3d34f490c47e63d9d553b6dfc1d"
+YIELD_REVISION = "6fea8f835ce2561aaed4b0d9996856f6a3ef1ee6"
 YIELD_SCHEMA = "contracts/product/v1/model-version.schema.json"
 SOURCE_ARTIFACT_REF = "./generated/platform/artifact-ref.schema.json"
 PROJECTED_ARTIFACT_REF = "../platform/artifact-ref.schema.json"

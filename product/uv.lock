@@ -171,7 +171,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "cyrene-artifacts", git = "https://github.com/DoHorizon-AI/Cyrene-Platform.git?subdirectory=sdk%2Fpython%2Fcyrene_artifacts&rev=c59be6f2bd82489fbe933dadff84fc589e00afd9" },
-    { name = "cyrene-yield-contracts", git = "https://github.com/DoHorizon-AI/Cyrene-Yield.git?subdirectory=sdk%2Fpython%2Fcyrene_yield_contracts&rev=310c2f7fc256f3d34f490c47e63d9d553b6dfc1d" },
+    { name = "cyrene-yield-contracts", git = "https://github.com/DoHorizon-AI/Cyrene-Yield.git?subdirectory=sdk%2Fpython%2Fcyrene_yield_contracts&rev=6fea8f835ce2561aaed4b0d9996856f6a3ef1ee6" },
     { name = "fastapi", specifier = "==0.141.1" },
     { name = "httpx", specifier = "==0.28.1" },
     { name = "pydantic", specifier = "==2.13.5" },
@@ -191,7 +191,7 @@ dev = [
 [[package]]
 name = "cyrene-yield-contracts"
 version = "0.1.0"
-source = { git = "https://github.com/DoHorizon-AI/Cyrene-Yield.git?subdirectory=sdk%2Fpython%2Fcyrene_yield_contracts&rev=310c2f7fc256f3d34f490c47e63d9d553b6dfc1d#310c2f7fc256f3d34f490c47e63d9d553b6dfc1d" }
+source = { git = "https://github.com/DoHorizon-AI/Cyrene-Yield.git?subdirectory=sdk%2Fpython%2Fcyrene_yield_contracts&rev=6fea8f835ce2561aaed4b0d9996856f6a3ef1ee6#6fea8f835ce2561aaed4b0d9996856f6a3ef1ee6" }
 dependencies = [
     { name = "cyrene-artifacts" },
 ]

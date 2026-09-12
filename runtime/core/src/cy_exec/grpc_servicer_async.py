@@ -94,7 +94,7 @@ class AsyncAiInferenceServicer(AiInferenceServicer):
     ) -> None:
         self._server = inference_server
         self._config = config
-        self._telemetry = telemetry or Telemetry()
+        self._telemetry = telemetry or inference_server.telemetry
         self._executor = None  # 用于同步代码的线程池
         self._tracer = tracer
 

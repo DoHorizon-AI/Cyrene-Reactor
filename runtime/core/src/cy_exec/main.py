@@ -144,7 +144,7 @@ def _serve_forever(server: InferenceServer, config: WorkerConfig, uds_path: str 
     )
     grpc_server.start()
 
-    health_server = start_health_server()
+    health_server = start_health_server(telemetry=server.telemetry)
     health_thread = threading.Thread(target=health_server.serve_forever, daemon=True)
     health_thread.start()
     LOGGER.info("Worker gRPC 服务已启动，监听 UDS: %s。Ctrl+C 退出。", uds_path)

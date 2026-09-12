@@ -7,20 +7,9 @@
 # │ 模块职责：可选 Pro 运行时测试模块——验证企业级服务扩展。
 # └─────────────────────────────────────────────────────────────────────┘
 
-
-from hypothesis import given, settings, strategies as st
-
 from cy_exec_pro.core.alert_manager import AlertLevel, AlertManager, AlertType
-
-
-@given(values=st.lists(st.floats(0, 100, allow_nan=False, allow_infinity=False), min_size=1, max_size=20))
-@settings(max_examples=30, deadline=None)
-def test_gpu_alert_deduplication_and_state(values):
-    manager = AlertManager(gpu_utilization_threshold=80.0)
-    alerts = [alert for value in values if (alert := manager.check_gpu_utilization(value))]
-    for first, second in zip(alerts, alerts[1:]):
-        assert first.resolved != second.resolved
-    assert manager.get_alert_state(AlertType.GPU_UTILIZATION) is (values[-1] > 80.0)
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 
 @given(values=st.lists(st.integers(0, 200), min_size=1, max_size=20))
@@ -44,3 +33,10 @@ def test_memory_and_latency_levels_and_callbacks():
     assert manager.check_memory_pressure(90).resolved
     manager.reset()
     assert manager.get_alert_history() == []
+
+
+def test_hardware_specific_alert_api_is_not_product_surface():
+    manager = AlertManager()
+
+    assert not hasattr(manager, "check_gpu_utilization")
+    assert "GPU_UTILIZATION" not in AlertType.__members__

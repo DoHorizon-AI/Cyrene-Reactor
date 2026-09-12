@@ -23,7 +23,7 @@ from typing import Callable, Dict, Generator, List, Optional
 import logging
 
 from ..engines.abstract_engine import BaseEngine
-from .memory_manager import GPUMemoryManager
+from .memory_manager import ModelResidencyRegistry
 from .task_scheduler import SchedulerBusy, TaskScheduler
 from .telemetry import Telemetry
 
@@ -54,11 +54,12 @@ class InferenceServer:
 		engine_factory: InferenceEngineFactory,
 		scheduler: Optional[TaskScheduler] = None,
 		telemetry: Optional[Telemetry] = None,
+		residency: Optional[ModelResidencyRegistry] = None,
 	) -> None:
 		self._engine_factory = engine_factory
 		self._scheduler = scheduler or TaskScheduler()
 		self._telemetry = telemetry or Telemetry()
-		self._memory = GPUMemoryManager()
+		self._residency = residency or ModelResidencyRegistry()
 		self._model_lock: Dict[str, threading.Lock] = {}
 		self._is_shutting_down: bool = False
 
@@ -92,7 +93,7 @@ class InferenceServer:
 			raise RuntimeError("Server is shutting down.")
 
 		# 如果内存管理器中已有加载的模型，直接返回
-		engine = self._memory.get_loaded_model(model_id)
+		engine = self._residency.get_loaded_model(model_id)
 		if engine is not None:
 			return engine
 
@@ -103,7 +104,7 @@ class InferenceServer:
 		lock = self._model_lock.setdefault(model_id, threading.Lock())
 		with lock:
 			# 再次检查，避免竞争条件下重复加载
-			engine = self._memory.get_loaded_model(model_id)
+			engine = self._residency.get_loaded_model(model_id)
 			if engine is not None:
 				return engine
 
@@ -131,7 +132,7 @@ class InferenceServer:
 
 			if progress_callback:
 				progress_callback("模型加载完成，准备开始推理...")
-			self._memory.register_model(model_id, engine)
+			self._residency.register_model(model_id, engine)
 			return engine
 
 	def stream_predict(
@@ -168,7 +169,7 @@ class InferenceServer:
 		progress_sentinel = "__CY_LLM_PROGRESS_END__"
 
 		# 检查模型是否已加载
-		model_loaded = self._memory.get_loaded_model(model_id) is not None
+		model_loaded = self._residency.get_loaded_model(model_id) is not None
 
 		# 如果模型未加载，先发送加载开始消息
 		if not model_loaded:
@@ -211,9 +212,6 @@ class InferenceServer:
 				if not model_loaded:
 					progress_queue.put(progress_sentinel)
 				response_queue.put(sentinel)
-			finally:
-				# 标记该模型最近访问时间，防止被误回收
-				self._memory.access_model(model_id)
 
 		try:
 			self._scheduler.submit(_task, priority=priority)
@@ -270,11 +268,11 @@ class InferenceServer:
 	def unload_model(self, model_id: str) -> None:
 		lock = self._model_lock.setdefault(model_id, threading.Lock())
 		with lock:
-			engine = self._memory.get_loaded_model(model_id)
+			engine = self._residency.get_loaded_model(model_id)
 			if engine is None:
 				return
 			engine.unload_model()
-			self._memory.unregister_model(model_id)
+			self._residency.unregister_model(model_id)
 
 	async def async_unload_model(self, model_id: str) -> None:
 		"""异步卸载模型（在线程池中执行）"""
@@ -345,7 +343,7 @@ class InferenceServer:
 	def shutdown(self) -> None:
 		self._is_shutting_down = True
 		self._scheduler.shutdown()
-		for model_id in sorted(self._memory.get_loaded_models()):
+		for model_id in sorted(self._residency.get_loaded_models()):
 			try:
 				self.unload_model(model_id)
 			except Exception:
@@ -353,7 +351,12 @@ class InferenceServer:
 
 	def get_loaded_models(self) -> List[str]:
 		"""Return model identities known to the Product coordinator."""
-		return self._memory.get_loaded_models()
+		return self._residency.get_loaded_models()
+
+	@property
+	def telemetry(self) -> Telemetry:
+		"""Return this server's canonical request telemetry."""
+		return self._telemetry
 
 	def health_check(self) -> bool:
 		"""Return whether the Product coordinator accepts new work."""
@@ -361,4 +364,4 @@ class InferenceServer:
 
 	def get_memory_usage(self) -> Dict:
 		"""Return aggregate memory observations reported through engine ports."""
-		return self._memory.get_memory_info()
+		return self._residency.memory_observation()
