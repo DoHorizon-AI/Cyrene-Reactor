@@ -2,9 +2,9 @@ name: ci
 
 on:
   push:
-    branches: [main, develop, chore/*, feat/*, fix/*]
+    branches: [develop, main, release, chore/*, feat/*, fix/*]
   pull_request:
-    branches: [main, develop]
+    branches: [develop, main, release]
 
 permissions:
   contents: read
@@ -67,3 +67,67 @@ jobs:
           uv sync --frozen --extra dev
           uv run --frozen ruff check runtime/core/src runtime/core/tests runtime/pro/src runtime/pro/tests
           uv run --frozen python -m pytest runtime/core/tests/ runtime/pro/tests/
+
+  publish-artifact:
+    name: ci / immutable-artifact
+    if: github.event_name != 'pull_request'
+    needs: [rust-clippy-test, python-serving]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install locked packaging tool
+        run: python -m pip install --disable-pip-version-check uv==0.12.3
+      - name: Build immutable release bundle
+        env:
+          ARTIFACT_NAME: cyrene-reactor-${{ github.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          git archive --format=tar.gz --prefix="Cyrene-Reactor-${GITHUB_SHA}/" "${GITHUB_SHA}" \
+            > "dist/cyrene-reactor-${GITHUB_SHA}.source.tar.gz"
+          uv build --wheel --out-dir dist product
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          dist = Path("dist")
+          payload = []
+          for path in sorted(dist.iterdir()):
+              if path.name == "artifact-manifest.json":
+                  continue
+              payload.append(
+                  {
+                      "file": path.name,
+                      "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                      "kind": "release-payload",
+                  }
+              )
+          if not payload:
+              raise SystemExit("artifact payload is empty")
+          manifest = {
+              "schema_version": 1,
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "commit_sha": os.environ["GITHUB_SHA"],
+              "workflow_run_id": int(os.environ["GITHUB_RUN_ID"]),
+              "artifact_name": os.environ["ARTIFACT_NAME"],
+              "payload": payload,
+          }
+          (dist / "artifact-manifest.json").write_text(
+              json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cyrene-reactor-${{ github.sha }}
+          path: dist
+          if-no-files-found: error
+          retention-days: 30

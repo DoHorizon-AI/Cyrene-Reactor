@@ -30,7 +30,7 @@ metadata; the lockfiles remain the reproducible version source.
 
 | Package | Version or revision | SPDX license | Source / note |
 | --- | --- | --- | --- |
-| `cyrene-plugin-runtime` | `0.2.0`, Plugins `c3f75689ebb10b2e07b3816310e768d74ae6cc10` | **UNDECLARED** | Plugins-owned direct transport SDK; its manifest currently has no license field, so public dependency closure is blocked until upstream metadata is corrected. |
+| `cyrene-plugin-runtime` | `0.2.0`, Plugins `3afbac4d386eb7a27f6778149187884820c0b7f6` | **UNDECLARED** | Plugins-owned direct transport SDK; its manifest currently has no license field, so public dependency closure is blocked until upstream metadata is corrected. |
 | `grpcio` | `1.83.0` | `Apache-2.0` | PyPI runtime and generated transport support. |
 | `grpcio-tools` | `1.83.0` | `Apache-2.0` | PyPI build-time protobuf tooling. |
 | `protobuf` | `7.36.0` | `BSD-3-Clause` | PyPI runtime and generated message support. |
