@@ -10,7 +10,7 @@ license = "Apache-2.0"
 requires-python = ">=3.12"
 dependencies = [
     # Plugins-owned direct transport; keep the Product runtime independent of sibling checkouts.
-    "cyrene-plugin-runtime @ git+https://github.com/DoHorizon-AI/Cyrene-Plugins-Official.git@c3f75689ebb10b2e07b3816310e768d74ae6cc10#subdirectory=sdk/python/cyrene_plugin_runtime",
+    "cyrene-plugin-runtime @ git+https://github.com/DoHorizon-AI/Cyrene-Plugins-Official.git@3afbac4d386eb7a27f6778149187884820c0b7f6#subdirectory=sdk/python/cyrene_plugin_runtime",
     "grpcio==1.83.0",
     "grpcio-tools==1.83.0",
     "protobuf==7.36.0",

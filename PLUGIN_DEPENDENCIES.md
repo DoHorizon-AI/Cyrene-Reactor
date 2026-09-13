@@ -9,7 +9,7 @@ Reactor 使用下方 Plugins 已接受提交中的直连传输 SDK。运行时�
 
 | Package | Source | License status | Purpose |
 |---|---|---|---|
-| `cyrene-plugin-runtime` | `Cyrene-Plugins-Official@c3f75689ebb10b2e07b3816310e768d74ae6cc10`, `sdk/python/cyrene_plugin_runtime` | **UNDECLARED upstream** | `DirectPluginRuntime` gRPC client and typed payload facade |
+| `cyrene-plugin-runtime` | `Cyrene-Plugins-Official@3afbac4d386eb7a27f6778149187884820c0b7f6`, `sdk/python/cyrene_plugin_runtime` | **UNDECLARED upstream** | `DirectPluginRuntime` gRPC client and typed payload facade |
 
 `execution.engine.v1` payloads remain owned by Plugins. Reactor only encodes and
 validates the owner-defined JSON bytes and canonical type URLs at its Product
