@@ -20,11 +20,14 @@ from uuid import UUID, uuid4
 from cyrene_reactor_product.domain import (
     ArtifactRef,
     CreateDeploymentRequest,
+    CreateModelImportRequest,
     Deployment,
     DesiredState,
     Endpoint,
     EndpointState,
     ModelComposition,
+    ModelImport,
+    ModelImportState,
     ModelVersionDocument,
     NodeRef,
     ObservedState,
@@ -177,6 +180,104 @@ class ReactorService:
 
         with self._commands:
             return self._create_deployment(command, idempotency_key)
+
+    def create_model_import(
+        self, command: CreateModelImportRequest, idempotency_key: str | None
+    ) -> ModelImport:
+        """Validate and persist an external model import. | 校验并持久化外部模型导入。"""
+
+        with self._commands:
+            if command.trust_remote_code:
+                raise ReactorProductError(
+                    code="REACTOR_TRUST_REMOTE_CODE_FORBIDDEN",
+                    title="Remote code is not admitted",
+                    detail=(
+                        "trust_remote_code must remain disabled; this RC only imports "
+                        "self-contained config, tokenizer, and weight files."
+                    ),
+                    status=422,
+                )
+            digest = hashlib.sha256(
+                command.model_dump_json(by_alias=True, exclude_none=True).encode()
+            ).hexdigest()
+            replay_id = self.store.resolve_model_import_request(idempotency_key, digest)
+            if replay_id is not None:
+                return self._require_model_import(UUID(replay_id))
+            engine = self._engine(command.serving_binding_id)
+            now = utc_now()
+            pending = ModelImport(
+                id=uuid4(),
+                name=command.name,
+                serving_binding_id=command.serving_binding_id,
+                source=command.source,
+                credential_ref=command.credential_ref,
+                state=ModelImportState.VALIDATING,
+                created_at=now,
+                updated_at=now,
+                resource_version=1,
+            )
+            replay = self.store.commit_model_import_intent(pending, idempotency_key, digest)
+            if replay is not None:
+                return self._require_model_import(UUID(replay))
+            try:
+                result = engine.import_model(command)
+            except ServingEngineFailure as exc:
+                error = ReactorProductError(
+                    code="REACTOR_MODEL_IMPORT_FAILED",
+                    title="Model import failed",
+                    detail=str(exc),
+                    status=exc.status,
+                    retryable=exc.retryable,
+                    resource_ref=f"/api/v1/model-imports/{pending.id}",
+                )
+                failed = pending.model_copy(
+                    update={
+                        "state": ModelImportState.FAILED,
+                        "failure": ProductFailure(
+                            code=error.code,
+                            message=error.detail,
+                            retryable=error.retryable,
+                        ),
+                        "updated_at": utc_now(),
+                        "resource_version": 2,
+                    }
+                )
+                self.store.save_model_import(failed)
+                raise error from exc
+            ready = pending.model_copy(
+                update={
+                    "state": ModelImportState.READY,
+                    "model_artifact": result.model_artifact,
+                    "validation": result.validation,
+                    "failure": None,
+                    "updated_at": utc_now(),
+                    "resource_version": 2,
+                }
+            )
+            self.store.save_model_import(ready)
+            return ready
+
+    def get_model_import(self, model_import_id: UUID) -> ModelImport:
+        """Read a persisted model import. | 读取持久化模型导入。"""
+
+        with self._commands:
+            return self._require_model_import(model_import_id)
+
+    def list_model_imports(self) -> list[ModelImport]:
+        """List persisted model imports. | 列出持久化模型导入。"""
+
+        return self.store.list_model_imports()
+
+    def _require_model_import(self, model_import_id: UUID) -> ModelImport:
+        model_import = self.store.get_model_import(model_import_id)
+        if model_import is None:
+            raise ReactorProductError(
+                code="REACTOR_MODEL_IMPORT_NOT_FOUND",
+                title="Model import not found",
+                detail="No ModelImport exists with the requested id.",
+                status=404,
+            )
+        return model_import
 
     def _create_deployment(
         self, command: CreateDeploymentRequest, idempotency_key: str | None

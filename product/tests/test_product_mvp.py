@@ -22,7 +22,15 @@ from openapi_spec_validator.readers import read_from_filename
 from referencing import Registry, Resource
 
 from cyrene_reactor_product import create_app
-from cyrene_reactor_product.domain import ArtifactRef, EngineHandle, EngineObservation, NodeRef
+from cyrene_reactor_product.domain import (
+    ArtifactRef,
+    CreateModelImportRequest,
+    EngineHandle,
+    EngineObservation,
+    ModelImportResult,
+    ModelImportValidation,
+    NodeRef,
+)
 from cyrene_reactor_product.errors import ServingEngineFailure
 
 
@@ -31,6 +39,34 @@ class _TestServingExecutionPort:
 
     def __init__(self, executions: dict[str, dict[str, Any]] | None = None) -> None:
         self.executions = executions if executions is not None else {}
+        self.imports: dict[str, CreateModelImportRequest] = {}
+
+    def import_model(self, command: CreateModelImportRequest) -> ModelImportResult:
+        source = command.source.repository or command.source.path or ""
+        self.imports[source] = command
+        if command.source.repository == "missing/model":
+            raise ServingEngineFailure(
+                "SERVING_MODEL_SOURCE_UNAVAILABLE: the pinned source cannot be read",
+                status=503,
+                retryable=True,
+            )
+        return ModelImportResult(
+            model_artifact=ArtifactRef(
+                uri=f"artifact://sha256/{'c' * 64}",
+                digest=f"sha256:{'c' * 64}",
+                size_bytes=1,
+                kind="model",
+            ),
+            validation=ModelImportValidation(
+                weights=True,
+                config=True,
+                tokenizer=True,
+                chat_template=True,
+                license="Apache-2.0",
+                provenance=source,
+                digest=f"sha256:{'d' * 64}",
+            ),
+        )
 
     def prepare(self, deployment_id: UUID) -> EngineHandle:
         return EngineHandle(

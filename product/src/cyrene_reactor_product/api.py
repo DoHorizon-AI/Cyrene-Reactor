@@ -28,12 +28,13 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from cyrene_reactor_product.domain import (
     CreateDeploymentDraft,
     CreateDeploymentRequest,
+    CreateModelImportRequest,
     DeployDraftRequest,
     Deployment,
     DeploymentDraft,
     Endpoint,
     ModelComposition,
-    ModelImportRequest,
+    ModelImport,
     ProblemDetails,
     ProductResourceRef,
     RestartRequest,
@@ -297,6 +298,36 @@ def create_app(
     def list_deployments() -> list[Deployment]:
         return store.list_deployments()
 
+    @app.post(
+        "/api/v1/model-imports",
+        response_model=ModelImport,
+        response_model_exclude_none=True,
+        status_code=201,
+    )
+    def create_model_import(
+        command: CreateModelImportRequest,
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", max_length=200),
+    ) -> ModelImport:
+        return service.create_model_import(command, idempotency_key)
+
+    @app.get(
+        "/api/v1/model-imports",
+        response_model=list[ModelImport],
+        response_model_exclude_none=True,
+    )
+    def list_model_imports() -> list[ModelImport]:
+        return service.list_model_imports()
+
+    @app.get(
+        "/api/v1/model-imports/{importId}",
+        response_model=ModelImport,
+        response_model_exclude_none=True,
+    )
+    def get_model_import(
+        import_id: Annotated[UUID, ApiPath(alias="importId")],
+    ) -> ModelImport:
+        return service.get_model_import(import_id)
+
     @app.get("/api/v1/deployments/{deploymentId}/export")
     def export_deployment(
         deployment_id: Annotated[UUID, ApiPath(alias="deploymentId")],
@@ -402,9 +433,5 @@ def create_app(
     @app.get("/api/v1/serving-bindings/{binding_id}/node")
     def node(binding_id: str) -> dict[str, object]:
         return remote(binding_id).request("GET", "/node")
-
-    @app.post("/api/v1/serving-bindings/{binding_id}/model-imports", status_code=201)
-    def import_model(binding_id: str, command: ModelImportRequest) -> dict[str, object]:
-        return remote(binding_id).request("POST", "/imports", command.model_dump())
 
     return app

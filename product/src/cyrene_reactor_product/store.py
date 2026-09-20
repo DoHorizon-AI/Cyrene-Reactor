@@ -16,7 +16,7 @@ from pathlib import Path
 from threading import RLock
 from uuid import UUID
 
-from cyrene_reactor_product.domain import Deployment, DeploymentDraft, Endpoint
+from cyrene_reactor_product.domain import Deployment, DeploymentDraft, Endpoint, ModelImport
 from cyrene_reactor_product.errors import ReactorProductError
 
 
@@ -48,6 +48,10 @@ class ReactorStore:
                 CREATE TABLE IF NOT EXISTS deployment_execution_evidence (
                     deployment_id TEXT PRIMARY KEY,
                     execution_ref TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS model_imports (
+                    id TEXT PRIMARY KEY,
+                    document TEXT NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS idempotency (
                     scope TEXT NOT NULL,
@@ -147,6 +151,76 @@ class ReactorStore:
                 "SELECT document FROM deployment_drafts ORDER BY rowid DESC"
             ).fetchall()
         return [DeploymentDraft.model_validate_json(row["document"]) for row in rows]
+
+    def resolve_model_import_request(self, key: str | None, digest: str) -> str | None:
+        """Resolve model-import replay or reject conflicting key reuse. | 解析导入幂等重放。"""
+
+        if key is None:
+            return None
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT request_hash, resource_id FROM idempotency "
+                "WHERE scope = 'model-import' AND key = ?",
+                (key,),
+            ).fetchone()
+        if row is None:
+            return None
+        if row["request_hash"] != digest:
+            raise ReactorProductError(
+                code="REACTOR_IDEMPOTENCY_CONFLICT",
+                title="Idempotency key conflict",
+                detail="The Idempotency-Key was already used with a different import request.",
+                status=409,
+            )
+        return str(row["resource_id"])
+
+    def commit_model_import_intent(
+        self, model_import: ModelImport, key: str | None, digest: str
+    ) -> str | None:
+        """Persist import intent and retry identity atomically. | 原子持久化导入意图。"""
+
+        with self._lock, self._connection:
+            replay = self.resolve_model_import_request(key, digest)
+            if replay is not None:
+                return replay
+            self._connection.execute(
+                "INSERT INTO model_imports(id, document) VALUES (?, ?)",
+                (str(model_import.id), model_import.model_dump_json(exclude_none=True)),
+            )
+            if key is not None:
+                self._connection.execute(
+                    "INSERT INTO idempotency(scope, key, request_hash, resource_id) "
+                    "VALUES ('model-import', ?, ?, ?)",
+                    (key, digest, str(model_import.id)),
+                )
+        return None
+
+    def save_model_import(self, model_import: ModelImport) -> None:
+        """Upsert a ModelImport validation observation. | 写入导入校验观测。"""
+
+        with self._lock, self._connection:
+            self._connection.execute(
+                "INSERT OR REPLACE INTO model_imports(id, document) VALUES (?, ?)",
+                (str(model_import.id), model_import.model_dump_json(exclude_none=True)),
+            )
+
+    def get_model_import(self, identifier: UUID) -> ModelImport | None:
+        """Read an import by Product identity. | 按产品身份读取导入。"""
+
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT document FROM model_imports WHERE id = ?", (str(identifier),)
+            ).fetchone()
+        return ModelImport.model_validate_json(row["document"]) if row else None
+
+    def list_model_imports(self) -> list[ModelImport]:
+        """List validated imports for deployment selection. | 列出可部署的导入。"""
+
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT document FROM model_imports ORDER BY rowid DESC"
+            ).fetchall()
+        return [ModelImport.model_validate_json(row["document"]) for row in rows]
 
     def save_deployment(self, deployment: Deployment) -> None:
         """Upsert a Deployment. | 写入 Deployment。"""

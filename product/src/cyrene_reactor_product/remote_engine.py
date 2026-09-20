@@ -19,8 +19,11 @@ from pydantic import BaseModel, ConfigDict
 
 from cyrene_reactor_product.domain import (
     ArtifactRef,
+    CreateModelImportRequest,
     EngineHandle,
     EngineObservation,
+    ModelImportResult,
+    ModelImportValidation,
     ModelVersionDocument,
     NodeRef,
     canonical_model_version,
@@ -88,6 +91,27 @@ class RemoteServingExecutionPort:
             raise ValueError(
                 "SERVING_TLS_REQUIRED: remote bindings require HTTPS or a local SSH tunnel"
             )
+
+    def import_model(self, command: CreateModelImportRequest) -> ModelImportResult:
+        """Ask the binding to validate and publish the external source. | 委托校验与发布。"""
+
+        payload: dict[str, Any] = {
+            "name": command.name,
+            "source": command.source.model_dump(mode="json", by_alias=True, exclude_none=True),
+            "trustRemoteCode": False,
+        }
+        if command.credential_ref is not None:
+            payload["credentialRef"] = command.credential_ref
+        result = self.request("POST", "/imports", payload)
+        try:
+            artifact = ArtifactRef.model_validate(result["modelArtifact"])
+            validation = ModelImportValidation.model_validate(result["validation"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ServingEngineFailure(
+                "SERVING_RESPONSE_INCOMPATIBLE: the binding returned invalid import evidence",
+                status=409,
+            ) from exc
+        return ModelImportResult(model_artifact=artifact, validation=validation)
 
     def request(self, method: str, path: str, payload: Any = None) -> dict[str, Any]:
         """Call the selected binding with bounded timeout and explicit errors. | 调用选定绑定。"""

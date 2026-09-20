@@ -13,6 +13,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from enum import StrEnum
+from pathlib import Path
 from typing import Any, Literal
 from uuid import UUID
 
@@ -166,11 +167,103 @@ class RestartRequest(ContractModel):
     resource_version: int = Field(gt=0)
 
 
-class ModelImportRequest(ContractModel):
+class ModelImportSourceKind(StrEnum):
+    """Admitted external model source kinds. | 允许的外部模型来源类型。"""
+
+    HUGGING_FACE = "HUGGING_FACE"
+    LOCAL_PATH = "LOCAL_PATH"
+
+
+class ModelImportSource(ContractModel):
     """Immutable external model source, independent of producer Product. | 外部模型来源。"""
 
-    repository: str
-    revision: str
+    kind: ModelImportSourceKind
+    repository: str | None = Field(default=None, min_length=1, max_length=300)
+    revision: str | None = Field(default=None, pattern=r"^[0-9a-f]{40}$")
+    path: str | None = Field(default=None, min_length=1, max_length=4096)
+
+    @model_validator(mode="after")
+    def validate_source(self) -> ModelImportSource:
+        if self.kind == ModelImportSourceKind.HUGGING_FACE:
+            if not self.repository or "/" not in self.repository:
+                raise ValueError("MODEL_IMPORT_SOURCE_INVALID: repository must be owner/name")
+            if self.revision is None:
+                raise ValueError(
+                    "MODEL_IMPORT_SOURCE_INVALID: a pinned 40-hex revision is required"
+                )
+            if self.path is not None:
+                raise ValueError(
+                    "MODEL_IMPORT_SOURCE_INVALID: a Hugging Face source cannot have a path"
+                )
+            return self
+        if not self.path or not self.path.startswith("/"):
+            raise ValueError(
+                "MODEL_IMPORT_SOURCE_INVALID: a local import requires an absolute path"
+            )
+        segments = Path(self.path).parts
+        if ".." in segments:
+            raise ValueError("MODEL_IMPORT_SOURCE_INVALID: path traversal is not admitted")
+        if self.repository is not None or self.revision is not None:
+            raise ValueError("MODEL_IMPORT_SOURCE_INVALID: a local source cannot have a repository")
+        return self
+
+
+class ModelImportState(StrEnum):
+    """Reactor-owned ModelImport lifecycle. | 模型导入生命周期。"""
+
+    VALIDATING = "VALIDATING"
+    READY = "READY"
+    FAILED = "FAILED"
+
+
+class ModelImportValidation(ContractModel):
+    """Validation evidence returned by the serving binding. | 服务绑定返回的校验证据。"""
+
+    weights: bool
+    config: bool
+    tokenizer: bool
+    chat_template: bool
+    license: str | None = Field(default=None, exclude_if=lambda value: value is None)
+    provenance: str = Field(min_length=1)
+    digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    trust_remote_code: Literal[False] = False
+    issues: list[str] = Field(default_factory=list)
+
+
+class ModelImportResult(ContractModel):
+    """Validated model artifact published by the binding. | 绑定发布的已校验模型制品。"""
+
+    model_artifact: ArtifactRef
+    validation: ModelImportValidation
+
+
+class ModelImport(ContractModel):
+    """Persisted import independent of any Deployment. | 独立于 Deployment 的持久化导入。"""
+
+    id: UUID
+    name: str = Field(min_length=1, max_length=200)
+    serving_binding_id: str = Field(min_length=1, max_length=200)
+    source: ModelImportSource
+    credential_ref: str | None = Field(
+        default=None, min_length=1, max_length=300, exclude_if=lambda value: value is None
+    )
+    state: ModelImportState
+    model_artifact: ArtifactRef | None = None
+    validation: ModelImportValidation | None = None
+    failure: ProductFailure | None = None
+    created_at: datetime
+    updated_at: datetime
+    resource_version: int = Field(ge=1)
+
+
+class CreateModelImportRequest(ContractModel):
+    """Create-ModelImport command. | 创建模型导入请求。"""
+
+    name: str = Field(min_length=1, max_length=200)
+    serving_binding_id: str = Field(min_length=1, max_length=200)
+    source: ModelImportSource
+    credential_ref: str | None = Field(default=None, min_length=1, max_length=300)
+    trust_remote_code: bool = False
 
 
 class Deployment(ContractModel):
