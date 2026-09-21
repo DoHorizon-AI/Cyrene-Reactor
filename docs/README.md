@@ -27,6 +27,7 @@ The runtime is split into a canonical Python core, optional Pro extensions, and 
 | [`REPOSITORY-LIFECYCLE.md`](REPOSITORY-LIFECYCLE.md) | Repository governance and release boundaries / 仓库治理与发布边界 |
 | [`PUBLICATION.md`](PUBLICATION.md) | Public-source target, evidence boundary, and blockers / 公开源码目标、证据边界与阻塞项 |
 | [`DEPENDENCY-LICENSES.md`](DEPENDENCY-LICENSES.md) | Direct dependency licenses and SBOM entrypoints / 直接依赖许可证与 SBOM 入口 |
+| [`logging-and-errors.md`](logging-and-errors.md) | Cross-repository logging, error codes, and diagnostics specification / 跨仓日志、错误码与诊断规范 (草案 v0.1) |
 
 ## Suggested order / 推荐顺序
 
