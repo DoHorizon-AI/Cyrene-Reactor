@@ -98,6 +98,36 @@ class ObservedState(StrEnum):
     STOPPED = "STOPPED"
 
 
+class DeploymentPhase(StrEnum):
+    """Granular phase in Deployment execution timeline. | 部署执行阶段。"""
+
+    QUEUED = "QUEUED"
+    IMPORTING = "IMPORTING"
+    LOADING = "LOADING"
+    PROBING = "PROBING"
+    READY = "READY"
+    STOPPING = "STOPPING"
+    RELEASED = "RELEASED"
+    FAILED = "FAILED"
+
+
+class DeploymentEvent(ContractModel):
+    """Timestamped phase event for a deployment. | 部署阶段事件。"""
+
+    sequence: int = Field(ge=1)
+    phase: DeploymentPhase
+    message: str
+    occurred_at: datetime
+    failure_code: str | None = None
+
+
+class DeploymentEventsResponse(ContractModel):
+    """Historical list of phase events for a deployment. | 部署阶段事件列表。"""
+
+    deployment_id: UUID
+    events: list[DeploymentEvent]
+
+
 class ModelComposition(StrEnum):
     """Supported immutable serving composition. | 支持的不可变模型组合。"""
 

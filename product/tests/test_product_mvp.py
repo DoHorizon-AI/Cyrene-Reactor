@@ -14,7 +14,7 @@ import json
 import sqlite3
 from pathlib import Path
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
 from jsonschema import Draft202012Validator, FormatChecker, validate
@@ -285,5 +285,53 @@ def test_legacy_execution_reference_is_migrated_out_of_product_json(tmp_path: Pa
             deployment = client.get(f"/api/v1/deployments/{deployment_id}").json()
         assert "engineExecutionRef" not in deployment
         assert app.state.reactor_store.get_execution_ref(UUID(deployment_id)) == "process:1234"
+    finally:
+        app.state.reactor_store.close()
+
+
+def test_deployment_events_record_phase_transitions(tmp_path: Path) -> None:
+    engine = _TestServingExecutionPort()
+    app = create_app(database_path=tmp_path / "reactor.sqlite3", engine=engine)
+    try:
+        with TestClient(app) as client:
+            created = client.post(
+                "/api/v1/deployments",
+                json={
+                    "name": "phase-test",
+                    "modelArtifact": _model(),
+                    "servingBindingId": "local-process-serving",
+                },
+            )
+            assert created.status_code == 201, created.text
+            deployment_id = created.json()["id"]
+
+            res = client.get(f"/api/v1/deployments/{deployment_id}/events")
+            assert res.status_code == 200, res.text
+            data = res.json()
+            assert data["deploymentId"] == deployment_id
+            events = data["events"]
+            # At least 3 phase transitions recorded
+            assert len(events) >= 3
+            phases = [e["phase"] for e in events]
+            assert "QUEUED" in phases
+            assert "LOADING" in phases
+            assert "PROBING" in phases
+            assert "READY" in phases
+            assert [e["sequence"] for e in events] == list(range(1, len(events) + 1))
+
+            # Stop deployment and check STOPPING and RELEASED events
+            client.post(f"/api/v1/deployments/{deployment_id}/actions/stop")
+            res_after_stop = client.get(f"/api/v1/deployments/{deployment_id}/events")
+            assert res_after_stop.status_code == 200
+            events_stop = res_after_stop.json()["events"]
+            assert len(events_stop) >= 5
+            phases_stop = [e["phase"] for e in events_stop]
+            assert "STOPPING" in phases_stop
+            assert "RELEASED" in phases_stop
+
+            # 404 for non-existent deployment
+            missing = client.get(f"/api/v1/deployments/{uuid4()}/events")
+            assert missing.status_code == 404
+            assert missing.json()["code"] == "REACTOR_DEPLOYMENT_NOT_FOUND"
     finally:
         app.state.reactor_store.close()

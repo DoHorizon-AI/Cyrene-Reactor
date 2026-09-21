@@ -22,6 +22,9 @@ from cyrene_reactor_product.domain import (
     CreateDeploymentRequest,
     CreateModelImportRequest,
     Deployment,
+    DeploymentEvent,
+    DeploymentEventsResponse,
+    DeploymentPhase,
     DesiredState,
     Endpoint,
     EndpointState,
@@ -195,6 +198,21 @@ class ReactorService:
         self.engines = engines
         self._commands = RLock()
 
+    def _append_deployment_event(
+        self,
+        deployment_id: UUID,
+        phase: DeploymentPhase,
+        message: str,
+        failure_code: str | None = None,
+    ) -> DeploymentEvent:
+        return self.store.append_deployment_event(
+            deployment_id=deployment_id,
+            phase=phase,
+            message=message,
+            occurred_at=utc_now(),
+            failure_code=failure_code,
+        )
+
     def _engine(self, binding_id: str) -> ServingExecutionPort:
         if self.engines is None:
             return self.engine
@@ -341,9 +359,15 @@ class ReactorService:
         replay = self.store.create_intent(deployment, idempotency_key, digest)
         if replay is not None:
             return self.get_deployment(UUID(replay))
+        self._append_deployment_event(deployment.id, DeploymentPhase.QUEUED, "Deployment queued")
         return self._launch(deployment)
 
     def _launch(self, deployment: Deployment) -> Deployment:
+        self._append_deployment_event(
+            deployment.id,
+            DeploymentPhase.LOADING,
+            f"Serving process starting on {deployment.serving_binding_id}",
+        )
         prepared = self._engine(deployment.serving_binding_id).prepare(deployment.id)
         if prepared is not None:
             now = utc_now()
@@ -385,6 +409,11 @@ class ReactorService:
                     cleanup_handled = True
                     _fail_composed_identity(engine, deployment, model_version, handle)
             assert engine is not None and handle is not None
+            self._append_deployment_event(
+                deployment.id,
+                DeploymentPhase.PROBING,
+                "Waiting for inference readiness probe",
+            )
             _verify_started_model_identity(engine, deployment.id, handle)
         except ServingEngineFailure as exc:
             cleanup_detail = None
@@ -450,6 +479,12 @@ class ReactorService:
                 self.store.save_pair(failed, endpoint, execution_ref=exc.execution_ref)
             else:
                 self.store.save_deployment(failed)
+            self._append_deployment_event(
+                deployment.id,
+                DeploymentPhase.FAILED,
+                str(exc),
+                failure_code=error.code,
+            )
             raise error from exc
 
         ready_at = utc_now()
@@ -476,6 +511,11 @@ class ReactorService:
             }
         )
         self.store.save_pair(ready, endpoint, execution_ref=handle.execution_ref)
+        self._append_deployment_event(
+            deployment.id,
+            DeploymentPhase.READY,
+            f"Model identity verified: {handle.model}",
+        )
         return ready
 
     def get_deployment(self, deployment_id: UUID) -> Deployment:
@@ -569,6 +609,11 @@ class ReactorService:
             }
         )
         self.store.save_deployment(stopping)
+        self._append_deployment_event(
+            deployment.id,
+            DeploymentPhase.STOPPING,
+            "Stopping deployment",
+        )
         endpoint = (
             self._require_endpoint(deployment.endpoint_id)
             if deployment.endpoint_id is not None
@@ -624,6 +669,11 @@ class ReactorService:
                 }
             )
             self.store.save_pair(stopped, retired)
+        self._append_deployment_event(
+            deployment.id,
+            DeploymentPhase.RELEASED,
+            "Deployment stopped and resources released",
+        )
         return stopped
 
     def restart_deployment(
@@ -652,7 +702,18 @@ class ReactorService:
                 }
             )
             self.store.save_deployment(starting)
+            self._append_deployment_event(
+                deployment.id,
+                DeploymentPhase.QUEUED,
+                "Deployment restart queued",
+            )
             return self._launch(starting)
+
+    def deployment_events(self, deployment_id: UUID) -> DeploymentEventsResponse:
+        """List chronological phase transition events for a deployment. | 列出部署阶段事件。"""
+        self._require_deployment(deployment_id)
+        events = self.store.list_deployment_events(deployment_id)
+        return DeploymentEventsResponse(deployment_id=deployment_id, events=events)
 
     def _require_deployment(self, deployment_id: UUID) -> Deployment:
         deployment = self.store.get_deployment(deployment_id)

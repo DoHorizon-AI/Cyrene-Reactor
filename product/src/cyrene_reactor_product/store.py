@@ -12,11 +12,19 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 from threading import RLock
 from uuid import UUID
 
-from cyrene_reactor_product.domain import Deployment, DeploymentDraft, Endpoint, ModelImport
+from cyrene_reactor_product.domain import (
+    Deployment,
+    DeploymentDraft,
+    DeploymentEvent,
+    DeploymentPhase,
+    Endpoint,
+    ModelImport,
+)
 from cyrene_reactor_product.errors import ReactorProductError
 
 
@@ -60,6 +68,17 @@ class ReactorStore:
                     resource_id TEXT NOT NULL,
                     PRIMARY KEY(scope, key)
                 );
+                CREATE TABLE IF NOT EXISTS deployment_events (
+                    deployment_id TEXT NOT NULL,
+                    sequence INTEGER NOT NULL,
+                    phase TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    occurred_at TEXT NOT NULL,
+                    failure_code TEXT,
+                    PRIMARY KEY(deployment_id, sequence)
+                );
+                CREATE INDEX IF NOT EXISTS idx_deployment_events_id
+                    ON deployment_events(deployment_id);
                 """
             )
             self._migrate_execution_evidence()
@@ -352,3 +371,68 @@ class ReactorStore:
                 "VALUES ('create-deployment', ?, ?, ?)",
                 (key, digest, str(resource_id)),
             )
+
+    def append_deployment_event(
+        self,
+        deployment_id: UUID,
+        phase: DeploymentPhase,
+        message: str,
+        occurred_at: datetime,
+        failure_code: str | None = None,
+    ) -> DeploymentEvent:
+        """Record an execution phase transition event. | 记录部署阶段事件。"""
+
+        with self._lock, self._connection:
+            row = self._connection.execute(
+                "SELECT COALESCE(MAX(sequence), 0) + 1 FROM deployment_events "
+                "WHERE deployment_id = ?",
+                (str(deployment_id),),
+            ).fetchone()
+            seq = int(row[0]) if row else 1
+            self._connection.execute(
+                """
+                INSERT INTO deployment_events (
+                    deployment_id, sequence, phase, message, occurred_at, failure_code
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(deployment_id),
+                    seq,
+                    phase.value if hasattr(phase, "value") else str(phase),
+                    message,
+                    occurred_at.isoformat(),
+                    failure_code,
+                ),
+            )
+            return DeploymentEvent(
+                sequence=seq,
+                phase=DeploymentPhase(phase),
+                message=message,
+                occurred_at=occurred_at,
+                failure_code=failure_code,
+            )
+
+    def list_deployment_events(self, deployment_id: UUID) -> list[DeploymentEvent]:
+        """List all events recorded for a deployment in order. | 按序列出部署阶段事件。"""
+
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT sequence, phase, message, occurred_at, failure_code
+                FROM deployment_events
+                WHERE deployment_id = ?
+                ORDER BY sequence ASC
+                """,
+                (str(deployment_id),),
+            ).fetchall()
+            return [
+                DeploymentEvent(
+                    sequence=row["sequence"],
+                    phase=DeploymentPhase(row["phase"]),
+                    message=row["message"],
+                    occurred_at=datetime.fromisoformat(row["occurred_at"]),
+                    failure_code=row["failure_code"],
+                )
+                for row in rows
+            ]

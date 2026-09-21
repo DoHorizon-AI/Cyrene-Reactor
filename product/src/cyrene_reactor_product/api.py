@@ -32,6 +32,7 @@ from cyrene_reactor_product.domain import (
     DeployDraftRequest,
     Deployment,
     DeploymentDraft,
+    DeploymentEventsResponse,
     Endpoint,
     ModelComposition,
     ModelImport,
@@ -244,6 +245,16 @@ def create_app(
         deployment_id: Annotated[UUID, ApiPath(alias="deploymentId")],
     ) -> Deployment:
         return service.get_deployment(deployment_id)
+
+    @app.get(
+        "/api/v1/deployments/{deploymentId}/events",
+        response_model=DeploymentEventsResponse,
+        response_model_exclude_none=True,
+    )
+    def deployment_events(
+        deployment_id: Annotated[UUID, ApiPath(alias="deploymentId")],
+    ) -> DeploymentEventsResponse:
+        return service.deployment_events(deployment_id)
 
     @app.post(
         "/api/v1/deployments/{deploymentId}/actions/stop",
