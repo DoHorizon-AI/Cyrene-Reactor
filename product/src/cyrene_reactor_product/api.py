@@ -43,20 +43,21 @@ from cyrene_reactor_product.domain import (
     utc_now,
 )
 from cyrene_reactor_product.engine import ServingExecutionPort, UnconfiguredServingExecutionPort
-from cyrene_reactor_product.errors import ReactorProductError, ServingEngineFailure
+from cyrene_reactor_product.errors import (
+    ReactorProductError,
+    ServingEngineFailure,
+    map_reactor_error,
+)
 from cyrene_reactor_product.exchange_handoff import ExchangeHandoff
+from cyrene_reactor_product.logging import (
+    emit_diagnostic_error,
+    parse_w3c_traceparent,
+    sanitize_request_id,
+)
 from cyrene_reactor_product.remote_engine import RemoteServingExecutionPort
 from cyrene_reactor_product.service import ReactorService
 from cyrene_reactor_product.store import ReactorStore
 
-_TRACEPARENT = re.compile(r"^00-([0-9a-f]{32})-([0-9a-f]{16})-[0-9a-f]{2}$")
-
-
-def _incoming_trace_id(value: str) -> str | None:
-    match = _TRACEPARENT.fullmatch(value)
-    if match is None or match.group(1) == "0" * 32 or match.group(2) == "0" * 16:
-        return None
-    return match.group(1)
 
 
 def create_app(
@@ -93,16 +94,43 @@ def create_app(
     async def propagate_trace(
         request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
-        trace_id = _incoming_trace_id(request.headers.get("traceparent", "")) or uuid4().hex
+        parsed_trace = parse_w3c_traceparent(request.headers.get("traceparent"))
+        trace_id = parsed_trace[0] if parsed_trace else uuid4().hex
+        parent_span_id = parsed_trace[1] if parsed_trace else "0000000000000001"
+        request_id = sanitize_request_id(request.headers.get("x-request-id")) or uuid4().hex
+
         request.state.trace_id = trace_id
+        request.state.span_id = parent_span_id
+        request.state.request_id = request_id
+
         response = await call_next(request)
         response.headers["traceparent"] = f"00-{trace_id}-0000000000000001-01"
+        response.headers["x-request-id"] = request_id
         return response
 
     @app.exception_handler(ReactorProductError)
     async def product_error(request: Request, exc: ReactorProductError) -> JSONResponse:
+        mapped = map_reactor_error(exc.code)
+        canonical_code = mapped["code"]
+        recovery_action = mapped.get("recovery_action")
+
+        emit_diagnostic_error(
+            "product.reactor.error",
+            canonical_code,
+            exc.detail,
+            trace_id=getattr(request.state, "trace_id", None),
+            span_id=getattr(request.state, "span_id", None),
+            attributes={
+                "request_id": getattr(request.state, "request_id", None),
+                "cause_kind": mapped.get("cause_kind"),
+                "status": exc.status,
+                "path": request.url.path,
+                "legacy_code": exc.code,
+            },
+        )
+
         problem = ProblemDetails(
-            type=f"https://errors.cyrene.dev/reactor/{exc.code.lower()}",
+            type=f"https://errors.cyrene.dev/reactor/{canonical_code.lower()}",
             title=exc.title,
             status=exc.status,
             detail=exc.detail,
@@ -111,6 +139,8 @@ def create_app(
             retryable=exc.retryable,
             trace_id=request.state.trace_id,
             resource_ref=exc.resource_ref,
+            request_id=getattr(request.state, "request_id", None),
+            recovery_action=recovery_action,
         )
         return JSONResponse(
             status_code=exc.status,
@@ -135,8 +165,26 @@ def create_app(
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(request: Request, _exc: RequestValidationError) -> JSONResponse:
+        mapped = map_reactor_error("REACTOR_REQUEST_INVALID")
+        canonical_code = mapped["code"]
+        recovery_action = mapped.get("recovery_action")
+
+        emit_diagnostic_error(
+            "product.reactor.validation_error",
+            canonical_code,
+            "The request does not conform to the Reactor Product API v1 contract.",
+            trace_id=getattr(request.state, "trace_id", None),
+            span_id=getattr(request.state, "span_id", None),
+            attributes={
+                "request_id": getattr(request.state, "request_id", None),
+                "cause_kind": mapped.get("cause_kind"),
+                "status": 422,
+                "path": request.url.path,
+            },
+        )
+
         problem = ProblemDetails(
-            type="https://errors.cyrene.dev/reactor/request-invalid",
+            type=f"https://errors.cyrene.dev/reactor/{canonical_code.lower()}",
             title="Request validation failed",
             status=422,
             detail="The request does not conform to the Reactor Product API v1 contract.",
@@ -144,6 +192,8 @@ def create_app(
             code="REACTOR_REQUEST_INVALID",
             retryable=False,
             trace_id=request.state.trace_id,
+            request_id=getattr(request.state, "request_id", None),
+            recovery_action=recovery_action,
         )
         return JSONResponse(
             status_code=422,
