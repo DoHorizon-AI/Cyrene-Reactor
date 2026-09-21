@@ -215,7 +215,12 @@ class RemoteServingExecutionPort:
                 model_version_id=returned_version_id,
             )
             if handle.model != "reactor-" + str(deployment_id):
-                raise ValueError("MODEL_IDENTITY_MISMATCH")
+                raise ServingEngineFailure(
+                    "MODEL_IDENTITY_MISMATCH: the binding returned an unexpected served model",
+                    execution_ref=handle.execution_ref,
+                    endpoint_url=handle.endpoint_url,
+                    status=409,
+                )
         except (ValueError, KeyError, TypeError) as exc:
             raise ServingEngineFailure(
                 "SERVING_RESPONSE_INCOMPATIBLE: restore the binding before retrying",
@@ -241,6 +246,67 @@ class RemoteServingExecutionPort:
                 retryable=True,
             )
         return handle
+
+    def verify_served_model(
+        self,
+        deployment_id: UUID,
+        execution_ref: str,
+        endpoint_url: str,
+        served_model: str | None,
+    ) -> None:
+        """Verify the OpenAI model registry after startup. | 启动后校验模型注册表。"""
+
+        expected_model = "reactor-" + str(deployment_id)
+        if execution_ref != str(deployment_id) or served_model != expected_model:
+            raise ServingEngineFailure(
+                "MODEL_IDENTITY_MISMATCH: the serving handle does not match the deployment",
+                execution_ref=execution_ref,
+                endpoint_url=endpoint_url,
+                status=409,
+            )
+        endpoint = urlsplit(endpoint_url)
+        binding = urlsplit(self.binding.control_url)
+        if endpoint.scheme != binding.scheme or endpoint.netloc != binding.netloc:
+            raise ServingEngineFailure(
+                "INFERENCE_ORIGIN_NOT_ADMITTED: the serving endpoint is outside its binding",
+                execution_ref=execution_ref,
+                endpoint_url=endpoint_url,
+                status=409,
+            )
+        try:
+            with httpx.Client(timeout=30, trust_env=False) as client:
+                response = client.get(
+                    endpoint_url.rstrip("/") + "/models",
+                    headers={"Authorization": "Bearer " + self.token},
+                )
+                response.raise_for_status()
+                body = response.json()
+        except httpx.HTTPError as exc:
+            raise ServingEngineFailure(
+                "INFERENCE_DATA_PATH_UNREACHABLE: serving model readback is unavailable",
+                execution_ref=execution_ref,
+                endpoint_url=endpoint_url,
+                status=503,
+                retryable=True,
+            ) from exc
+        except (TypeError, ValueError) as exc:
+            raise ServingEngineFailure(
+                "SERVING_RESPONSE_INCOMPATIBLE: serving model readback is not valid JSON",
+                execution_ref=execution_ref,
+                endpoint_url=endpoint_url,
+                status=409,
+            ) from exc
+
+        data = body.get("data") if isinstance(body, dict) else None
+        if not isinstance(data, list) or not any(
+            isinstance(item, dict) and item.get("id") == expected_model for item in data
+        ):
+            raise ServingEngineFailure(
+                "MODEL_IDENTITY_MISMATCH: /v1/models did not advertise the intended served model",
+                execution_ref=execution_ref,
+                endpoint_url=endpoint_url,
+                status=409,
+            )
 
     def inspect(
         self,

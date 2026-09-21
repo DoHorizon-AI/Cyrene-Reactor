@@ -25,6 +25,7 @@ from cyrene_reactor_product.domain import (
     DesiredState,
     Endpoint,
     EndpointState,
+    EngineHandle,
     ModelComposition,
     ModelImport,
     ModelImportState,
@@ -143,6 +144,40 @@ def _fail_composed_identity(
         status=409,
         retryable=cleanup_retryable,
     )
+
+
+def _verify_started_model_identity(
+    engine: ServingExecutionPort, deployment_id: UUID, handle: EngineHandle
+) -> None:
+    """Run an adapter-specific serving registry readback after startup."""
+
+    verifier = getattr(engine, "verify_served_model", None)
+    if callable(verifier):
+        verifier(deployment_id, handle.execution_ref, handle.endpoint_url, handle.model)
+
+
+def _cleanup_started_execution(
+    engine: ServingExecutionPort,
+    deployment: Deployment,
+    handle: EngineHandle,
+    model_digest: str,
+    model_version: ModelVersionDocument | None,
+) -> str | None:
+    """Release a process that failed post-start identity verification."""
+
+    try:
+        if model_version is not None:
+            _require_model_version_keyword(engine, "stop")
+        engine.stop(
+            handle.execution_ref,
+            handle.endpoint_url,
+            deployment.id,
+            model_digest,
+            model_version=model_version,
+        )
+    except ServingEngineFailure as exc:
+        return str(exc)
+    return None
 
 
 class ReactorService:
@@ -327,6 +362,11 @@ class ReactorService:
             )
             deployment = deployment.model_copy(update={"endpoint_id": pending.id})
             self.store.save_pair(deployment, pending, execution_ref=prepared.execution_ref)
+        engine: ServingExecutionPort | None = None
+        handle: EngineHandle | None = None
+        cleanup_handled = False
+        model_version: ModelVersionDocument | None = None
+        model: ArtifactRef | None = None
         try:
             model = serving_artifact(deployment)
             engine = self._engine(deployment.serving_binding_id)
@@ -342,8 +382,33 @@ class ReactorService:
                     model_version=model_version,
                 )
                 if getattr(handle, "model_version_id", None) != model_version["id"]:
+                    cleanup_handled = True
                     _fail_composed_identity(engine, deployment, model_version, handle)
+            assert engine is not None and handle is not None
+            _verify_started_model_identity(engine, deployment.id, handle)
         except ServingEngineFailure as exc:
+            cleanup_detail = None
+            if (
+                engine is not None
+                and handle is not None
+                and not cleanup_handled
+                and model is not None
+            ):
+                cleanup_detail = _cleanup_started_execution(
+                    engine,
+                    deployment,
+                    handle,
+                    model_version["id"] if model_version is not None else model.digest,
+                    model_version,
+                )
+            if cleanup_detail is not None:
+                exc = ServingEngineFailure(
+                    f"{exc}; cleanup failed: {cleanup_detail}",
+                    execution_ref=exc.execution_ref,
+                    endpoint_url=exc.endpoint_url,
+                    status=exc.status,
+                    retryable=True,
+                )
             error = ReactorProductError(
                 code="REACTOR_SERVING_START_FAILED",
                 title="Serving startup failed",
