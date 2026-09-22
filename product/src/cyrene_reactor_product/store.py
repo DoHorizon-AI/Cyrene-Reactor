@@ -79,6 +79,19 @@ class ReactorStore:
                 );
                 CREATE INDEX IF NOT EXISTS idx_deployment_events_id
                     ON deployment_events(deployment_id);
+                CREATE TABLE IF NOT EXISTS deployment_diagnostics (
+                    deployment_id TEXT NOT NULL,
+                    record_index INTEGER NOT NULL,
+                    sequence INTEGER NOT NULL,
+                    document TEXT NOT NULL,
+                    PRIMARY KEY(deployment_id, record_index)
+                );
+                CREATE INDEX IF NOT EXISTS idx_deployment_diagnostics_sequence
+                    ON deployment_diagnostics(deployment_id, sequence);
+                CREATE TABLE IF NOT EXISTS deployment_diagnostics_cursors (
+                    deployment_id TEXT PRIMARY KEY,
+                    runtime_sequence INTEGER NOT NULL
+                );
                 """
             )
             self._migrate_execution_evidence()
@@ -411,6 +424,97 @@ class ReactorStore:
                 message=message,
                 occurred_at=occurred_at,
                 failure_code=failure_code,
+            )
+
+    def append_deployment_diagnostics(
+        self, deployment_id: UUID, documents: list[dict[str, object]]
+    ) -> list[dict[str, object]]:
+        """Append diagnostics with one monotonic sequence per deployment.
+
+        Both Product records and harvested runtime records land in this table so
+        a console pages one ordered stream instead of merging two.
+        """
+
+        if not documents:
+            return []
+        appended: list[dict[str, object]] = []
+        with self._lock, self._connection:
+            row = self._connection.execute(
+                "SELECT COALESCE(MAX(sequence), 0) FROM deployment_diagnostics"
+                " WHERE deployment_id = ?",
+                (str(deployment_id),),
+            ).fetchone()
+            sequence = int(row[0]) if row else 0
+            index_row = self._connection.execute(
+                "SELECT COUNT(*) FROM deployment_diagnostics WHERE deployment_id = ?",
+                (str(deployment_id),),
+            ).fetchone()
+            record_index = int(index_row[0]) if index_row else 0
+            for offset, document in enumerate(documents):
+                sequence += 1
+                index = record_index + offset
+                record = {**document, "sequence": sequence}
+                self._connection.execute(
+                    "INSERT OR REPLACE INTO deployment_diagnostics"
+                    " (deployment_id, record_index, sequence, document) VALUES (?, ?, ?, ?)",
+                    (str(deployment_id), index, sequence, json.dumps(record, sort_keys=True)),
+                )
+                appended.append(record)
+        return appended
+
+    def deployment_diagnostics_count(self, deployment_id: UUID) -> int:
+        """How many diagnostic records are already durable for a deployment."""
+
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT COUNT(*) FROM deployment_diagnostics WHERE deployment_id = ?",
+                (str(deployment_id),),
+            ).fetchone()
+        return int(row[0]) if row else 0
+
+    def list_deployment_diagnostics(
+        self, deployment_id: UUID, after_sequence: int = 0, limit: int = 200
+    ) -> list[dict[str, object]]:
+        """Read diagnostics in sequence order. | 按序号读取部署诊断。"""
+
+        bounded = max(1, min(int(limit), 500))
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT document FROM deployment_diagnostics"
+                " WHERE deployment_id = ? AND sequence > ? ORDER BY sequence ASC LIMIT ?",
+                (str(deployment_id), int(after_sequence), bounded),
+            ).fetchall()
+        return [json.loads(row["document"]) for row in rows]
+
+    def deployment_diagnostics_degraded(self, deployment_id: UUID) -> bool:
+        """True when a persisted record shows the runtime lost output."""
+
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT 1 FROM deployment_diagnostics WHERE deployment_id = ? AND document LIKE ?",
+                (str(deployment_id), "%REACTOR.DIAGNOSTICS.DEGRADED%"),
+            ).fetchone()
+        return row is not None
+
+    def runtime_diagnostics_cursor(self, deployment_id: UUID) -> int:
+        """Highest runtime sequence already harvested for this deployment."""
+
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT runtime_sequence FROM deployment_diagnostics_cursors"
+                " WHERE deployment_id = ?",
+                (str(deployment_id),),
+            ).fetchone()
+        return int(row["runtime_sequence"]) if row else 0
+
+    def set_runtime_diagnostics_cursor(self, deployment_id: UUID, sequence: int) -> None:
+        """Record how much runtime output has been harvested."""
+
+        with self._lock, self._connection:
+            self._connection.execute(
+                "INSERT OR REPLACE INTO deployment_diagnostics_cursors"
+                " (deployment_id, runtime_sequence) VALUES (?, ?)",
+                (str(deployment_id), int(sequence)),
             )
 
     def list_deployment_events(self, deployment_id: UUID) -> list[DeploymentEvent]:

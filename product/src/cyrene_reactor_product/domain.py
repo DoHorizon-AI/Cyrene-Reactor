@@ -128,6 +128,38 @@ class DeploymentEventsResponse(ContractModel):
     events: list[DeploymentEvent]
 
 
+DiagnosticSource = Literal["product", "trainer", "runtime", "platform"]
+DiagnosticStream = Literal["stdout", "stderr", "combined"]
+DiagnosticLevel = Literal["debug", "info", "warn", "error"]
+
+
+class DiagnosticRecord(ContractModel):
+    """One redacted diagnostic line a console may show verbatim."""
+
+    sequence: int = Field(ge=1)
+    timestamp: str
+    level: DiagnosticLevel = "info"
+    source: DiagnosticSource = "product"
+    stream: DiagnosticStream = "combined"
+    code: str | None = Field(default=None, max_length=200)
+    message: str = Field(default="", max_length=8192)
+    request_id: str | None = Field(default=None, max_length=200)
+    operation_id: str | None = Field(default=None, max_length=200)
+    resource_id: str | None = Field(default=None, max_length=200)
+    attempt_id: str | None = Field(default=None, max_length=200)
+    truncated: bool = False
+
+
+class DiagnosticsPage(ContractModel):
+    """One page of diagnostics for a single Deployment. | 部署诊断分页。"""
+
+    resource_id: str
+    items: list[DiagnosticRecord] = Field(default_factory=list)
+    next_sequence: int = Field(ge=0)
+    terminal: bool = False
+    diagnostics_degraded: bool = False
+
+
 class ModelComposition(StrEnum):
     """Supported immutable serving composition. | 支持的不可变模型组合。"""
 

@@ -62,6 +62,11 @@ class ServingExecutionPort(Protocol):
     ) -> EngineObservation:
         """Stop an identity-verified serving execution."""
 
+    def diagnostics(
+        self, execution_ref: str, *, after_sequence: int = 0, limit: int = 200
+    ) -> dict[str, Any] | None:
+        """Read the runtime's own output, or None when the binding cannot report it."""
+
 
 class UnconfiguredServingExecutionPort:
     """Fail closed until an external serving binding is configured."""
@@ -114,6 +119,14 @@ class UnconfiguredServingExecutionPort:
         raise ServingEngineFailure(
             "SERVING_BINDING_REQUIRED: restore the original binding to release resources"
         )
+
+    def diagnostics(
+        self, execution_ref: str, *, after_sequence: int = 0, limit: int = 200
+    ) -> dict[str, Any] | None:
+        # Without a binding there is no runtime output to report; the Product
+        # still serves its own records rather than failing the whole page.
+        del execution_ref, after_sequence, limit
+        return None
 
 
 __all__ = ["ServingExecutionPort", "UnconfiguredServingExecutionPort"]

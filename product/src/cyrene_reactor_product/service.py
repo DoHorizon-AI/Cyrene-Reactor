@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import inspect
+import json
 from collections.abc import Callable
 from threading import RLock
 from typing import Any, cast
@@ -26,6 +27,9 @@ from cyrene_reactor_product.domain import (
     DeploymentEventsResponse,
     DeploymentPhase,
     DesiredState,
+    DiagnosticLevel,
+    DiagnosticRecord,
+    DiagnosticsPage,
     Endpoint,
     EndpointState,
     EngineHandle,
@@ -41,6 +45,10 @@ from cyrene_reactor_product.domain import (
 from cyrene_reactor_product.engine import ServingExecutionPort
 from cyrene_reactor_product.errors import ReactorProductError, ServingEngineFailure
 from cyrene_reactor_product.store import ReactorStore
+
+# A deployment in one of these states will not produce more output on its own.
+TERMINAL_OBSERVED_STATES = frozenset({ObservedState.STOPPED, ObservedState.FAILED})
+DIAGNOSTICS_PAGE_MAX_BYTES = 1024 * 1024
 
 
 def request_hash(command: CreateDeploymentRequest) -> str:
@@ -485,6 +493,14 @@ class ReactorService:
                 str(exc),
                 failure_code=error.code,
             )
+            # The Product's own view of why it gave up belongs in the same
+            # stream the runtime output lands in, so one page tells the story.
+            self.record_deployment_diagnostic(
+                deployment.id,
+                message=f"Serving startup failed: {exc}",
+                level="error",
+                code=error.code,
+            )
             raise error from exc
 
         ready_at = utc_now()
@@ -515,6 +531,12 @@ class ReactorService:
             deployment.id,
             DeploymentPhase.READY,
             f"Model identity verified: {handle.model}",
+        )
+        self.record_deployment_diagnostic(
+            deployment.id,
+            message=f"Deployment ready: {handle.model}",
+            level="info",
+            code="REACTOR.DEPLOYMENT.READY",
         )
         return ready
 
@@ -674,6 +696,12 @@ class ReactorService:
             DeploymentPhase.RELEASED,
             "Deployment stopped and resources released",
         )
+        self.record_deployment_diagnostic(
+            deployment.id,
+            message="Deployment stopped and resources released",
+            level="info",
+            code="REACTOR.DEPLOYMENT.RELEASED",
+        )
         return stopped
 
     def restart_deployment(
@@ -715,6 +743,111 @@ class ReactorService:
         events = self.store.list_deployment_events(deployment_id)
         return DeploymentEventsResponse(deployment_id=deployment_id, events=events)
 
+    def record_deployment_diagnostic(
+        self,
+        deployment_id: UUID,
+        *,
+        message: str,
+        level: DiagnosticLevel = "info",
+        code: str | None = None,
+    ) -> None:
+        """Append one Product-owned diagnostic line for a lifecycle transition."""
+
+        self.store.append_deployment_diagnostics(
+            deployment_id,
+            [
+                {
+                    "timestamp": utc_now().isoformat(),
+                    "level": level,
+                    "source": "product",
+                    "stream": "combined",
+                    "code": code,
+                    "message": message,
+                    "resourceId": str(deployment_id),
+                }
+            ],
+        )
+
+    def deployment_diagnostics(
+        self, deployment_id: UUID, *, after_sequence: int = 0, limit: int = 200
+    ) -> DiagnosticsPage:
+        """Harvest the runtime output and return one bounded, ordered page."""
+
+        if after_sequence < 0:
+            raise ReactorProductError(
+                code="REACTOR_DIAGNOSTICS_SEQUENCE_INVALID",
+                title="Invalid diagnostics cursor",
+                detail="afterSequence must be non-negative.",
+                status=422,
+            )
+        deployment = self._require_deployment(deployment_id)
+        degraded = self._harvest_runtime_diagnostics(deployment)
+        records = self.store.list_deployment_diagnostics(deployment_id, after_sequence, limit)
+        items = [DiagnosticRecord.model_validate(record) for record in records]
+        items = _bound_diagnostics(items)
+        return DiagnosticsPage(
+            resource_id=str(deployment_id),
+            items=items,
+            next_sequence=items[-1].sequence if items else after_sequence,
+            terminal=deployment.observed_state in TERMINAL_OBSERVED_STATES,
+            diagnostics_degraded=(
+                degraded or self.store.deployment_diagnostics_degraded(deployment_id)
+            ),
+        )
+
+    def _harvest_runtime_diagnostics(self, deployment: Deployment) -> bool:
+        """Persist new runtime records; report whether the binding could report."""
+
+        execution_ref = self.store.get_execution_ref(deployment.id)
+        if execution_ref is None:
+            return False
+        engine = self._engine(deployment.serving_binding_id)
+        reader = getattr(engine, "diagnostics", None)
+        if reader is None:
+            # A binding older than the diagnostics contract cannot report its
+            # runtime output; say so instead of pretending the page is complete.
+            return True
+        cursor = self.store.runtime_diagnostics_cursor(deployment.id)
+        page = reader(execution_ref, after_sequence=cursor, limit=500)
+        if page is None:
+            return True
+        documents = []
+        for record in page.get("items", []):
+            if not isinstance(record, dict):
+                continue
+            documents.append(
+                {
+                    "timestamp": str(record.get("timestamp", "")),
+                    "level": str(record.get("level", "info")),
+                    "source": "runtime",
+                    "stream": str(record.get("stream", "combined")),
+                    "code": record.get("code"),
+                    "message": str(record.get("message", ""))[:8192],
+                    "requestId": record.get("requestId"),
+                    "operationId": record.get("operationId"),
+                    "resourceId": str(deployment.id),
+                    "truncated": bool(record.get("truncated", False)),
+                }
+            )
+        if page.get("diagnosticsDegraded") is True:
+            documents.append(
+                {
+                    "timestamp": utc_now().isoformat(),
+                    "level": "warn",
+                    "source": "runtime",
+                    "stream": "combined",
+                    "code": "REACTOR.DIAGNOSTICS.DEGRADED",
+                    "message": "The serving runtime could not keep all of its output.",
+                    "resourceId": str(deployment.id),
+                }
+            )
+        if documents:
+            self.store.append_deployment_diagnostics(deployment.id, documents)
+        next_sequence = page.get("nextSequence")
+        if isinstance(next_sequence, int):
+            self.store.set_runtime_diagnostics_cursor(deployment.id, next_sequence)
+        return bool(page.get("diagnosticsDegraded") is True)
+
     def _require_deployment(self, deployment_id: UUID) -> Deployment:
         deployment = self.store.get_deployment(deployment_id)
         if deployment is None:
@@ -736,3 +869,18 @@ class ReactorService:
                 status=404,
             )
         return endpoint
+
+
+def _bound_diagnostics(items: list[DiagnosticRecord]) -> list[DiagnosticRecord]:
+    """Trim one page to the serialized byte budget shared with the console."""
+
+    kept = list(items)
+    while (
+        kept
+        and len(
+            json.dumps([item.model_dump(by_alias=True) for item in kept], separators=(",", ":"))
+        )
+        > DIAGNOSTICS_PAGE_MAX_BYTES
+    ):
+        kept.pop()
+    return kept

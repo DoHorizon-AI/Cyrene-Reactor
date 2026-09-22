@@ -19,7 +19,7 @@ from uuid import UUID, uuid4
 
 import anyio
 import httpx
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi import Path as ApiPath
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response, StreamingResponse
@@ -32,6 +32,7 @@ from cyrene_reactor_product.domain import (
     Deployment,
     DeploymentDraft,
     DeploymentEventsResponse,
+    DiagnosticsPage,
     Endpoint,
     ModelComposition,
     ModelImport,
@@ -303,6 +304,20 @@ def create_app(
         deployment_id: Annotated[UUID, ApiPath(alias="deploymentId")],
     ) -> DeploymentEventsResponse:
         return service.deployment_events(deployment_id)
+
+    @app.get(
+        "/api/v1/deployments/{deploymentId}/diagnostics",
+        response_model=DiagnosticsPage,
+        response_model_exclude_none=True,
+    )
+    def deployment_diagnostics(
+        deployment_id: Annotated[UUID, ApiPath(alias="deploymentId")],
+        after_sequence: int = Query(default=0, ge=0, alias="afterSequence"),
+        limit: int = Query(default=200, ge=1, le=500),
+    ) -> DiagnosticsPage:
+        return service.deployment_diagnostics(
+            deployment_id, after_sequence=after_sequence, limit=limit
+        )
 
     @app.post(
         "/api/v1/deployments/{deploymentId}/actions/stop",

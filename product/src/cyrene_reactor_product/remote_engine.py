@@ -377,6 +377,26 @@ class RemoteServingExecutionPort:
         ):
             return EngineObservation(ready=False, detail="CONTROL_OR_INFERENCE_UNREACHABLE")
 
+    def diagnostics(
+        self, execution_ref: str, *, after_sequence: int = 0, limit: int = 200
+    ) -> dict[str, Any] | None:
+        """Read the serving process output through the binding.
+
+        A binding that cannot answer (older runtime, transient failure) reports
+        None so the Product still returns its own records and marks the page
+        degraded instead of failing the request.
+        """
+
+        try:
+            page = self.request(
+                "GET",
+                f"/executions/{execution_ref}/diagnostics"
+                f"?afterSequence={int(after_sequence)}&limit={int(limit)}",
+            )
+        except (ServingEngineFailure, ValueError):
+            return None
+        return page if isinstance(page.get("items"), list) else None
+
     def stop(
         self,
         execution_ref: str,
