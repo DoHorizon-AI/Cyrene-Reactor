@@ -23,6 +23,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      - name: Enforce public host-placement dependency boundary
+        run: |
+          if grep -n 'cy-adapter-client' Cargo.toml Cargo.lock || \
+            grep -R -n --include='Cargo.toml' 'cy-adapter-client' components; then
+            echo 'Reactor host placement must use public contract crates, not the AGPL adapter client.' >&2
+            exit 1
+          fi
       - name: Cargo check (--locked)
         run: cargo check --locked --workspace --all-targets
       - name: Clippy check

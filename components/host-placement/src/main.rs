@@ -10,17 +10,18 @@ use std::io::{self, Read};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{bail, Context, Result};
-use cy_adapter_client::resource_from_proto;
 use cy_execution_fabric::{
     execution_capability, plan_execution_placement, ArtifactAvailability, ArtifactPlacementQuote,
     ExecutionPlacementRequest, ExecutionTargetCandidate, NetworkRequirements, PlacementPolicy,
 };
 use cy_kernel_contract::{
-    CapabilityRequirement, Provider, ProviderSnapshot, ProviderState, Quantity, ResourceQuery,
+    Capability, CapabilityRequirement, Identity, Provider, ProviderSnapshot, ProviderState,
+    Quantity, Resource, ResourceQuery, ResourceState, TopologyLink,
 };
 use cy_manifest::ArtifactRef;
-use cy_proto::core_v1::{
-    ExecutionAttachmentType, KernelCapabilities, NodeLifecycleState, RestartCapability,
+use cy_proto::{
+    core_v1::{ExecutionAttachmentType, KernelCapabilities, NodeLifecycleState, RestartCapability},
+    semantic_v1,
 };
 use prost::Message;
 use serde::Deserialize;
@@ -35,6 +36,74 @@ struct Input {
     minimum_memory_bytes: u64,
     artifact: ArtifactRef,
     scope: String,
+}
+
+fn resource_from_proto(resource: semantic_v1::Resource) -> Result<Resource> {
+    let identity = resource.identity.context("RESOURCE_IDENTITY_MISSING")?;
+    let provider = resource.provider.context("RESOURCE_PROVIDER_MISSING")?;
+    let state = match semantic_v1::ResourceState::try_from(resource.state) {
+        Ok(semantic_v1::ResourceState::Ready) => ResourceState::Ready,
+        Ok(semantic_v1::ResourceState::Degraded) => ResourceState::Degraded,
+        Ok(semantic_v1::ResourceState::Unavailable) => ResourceState::Unavailable,
+        Ok(semantic_v1::ResourceState::Unspecified) | Err(_) => {
+            bail!("RESOURCE_STATE_INVALID: state must be known and specified")
+        }
+    };
+    let links = resource
+        .links
+        .into_iter()
+        .map(|link| {
+            let peer = link.peer.context("TOPOLOGY_PEER_MISSING")?;
+            Ok(TopologyLink {
+                peer: identity_from_proto(peer),
+                kind: link.kind,
+                properties: link.properties.into_iter().collect(),
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let mapped = Resource {
+        identity: identity_from_proto(identity),
+        provider: identity_from_proto(provider),
+        resource_class: resource.resource_class,
+        capabilities: resource
+            .capabilities
+            .into_iter()
+            .map(|capability| Capability {
+                id: capability.id,
+                revision: capability.revision,
+                properties: capability.properties.into_iter().collect(),
+            })
+            .collect(),
+        capacity: resource
+            .capacity
+            .into_iter()
+            .map(|(key, quantity)| {
+                (
+                    key,
+                    Quantity {
+                        value: quantity.value,
+                        unit: quantity.unit,
+                    },
+                )
+            })
+            .collect(),
+        attributes: resource.attributes.into_iter().collect(),
+        state,
+        reason_code: resource.reason_code,
+        summary: resource.summary,
+        links,
+    };
+    mapped
+        .validate()
+        .map_err(|error| anyhow::anyhow!("{}: {}", error.reason_code, error.message))?;
+    Ok(mapped)
+}
+
+fn identity_from_proto(identity: semantic_v1::Identity) -> Identity {
+    Identity {
+        id: identity.id,
+        generation: identity.generation,
+    }
 }
 
 fn main() -> Result<()> {
@@ -164,4 +233,70 @@ fn main() -> Result<()> {
         json!({"eligible": evaluation.eligible, "nodeRef": {"nodeId": node.node_id, "nodeEpoch": node.node_epoch}, "reasons": reasons})
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn valid_resource() -> semantic_v1::Resource {
+        semantic_v1::Resource {
+            identity: Some(semantic_v1::Identity {
+                id: "gpu-0".to_string(),
+                generation: 1,
+            }),
+            provider: Some(semantic_v1::Identity {
+                id: "nvidia-0".to_string(),
+                generation: 2,
+            }),
+            resource_class: "accelerator".to_string(),
+            capabilities: vec![semantic_v1::Capability {
+                id: "vendor.nvidia.cuda".to_string(),
+                revision: 1,
+                properties: HashMap::new(),
+            }],
+            capacity: HashMap::from([(
+                "memory.allocatable".to_string(),
+                semantic_v1::Quantity {
+                    value: 24 * 1024 * 1024 * 1024,
+                    unit: "byte".to_string(),
+                },
+            )]),
+            attributes: HashMap::new(),
+            state: semantic_v1::ResourceState::Ready as i32,
+            reason_code: "resource.ready".to_string(),
+            summary: "available".to_string(),
+            links: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn converts_public_resource_contract_without_adapter_client() {
+        let resource = resource_from_proto(valid_resource()).expect("valid resource");
+        assert_eq!(resource.identity.id, "gpu-0");
+        assert_eq!(resource.provider.id, "nvidia-0");
+        assert_eq!(resource.state, ResourceState::Ready);
+        assert_eq!(resource.capabilities[0].id, "vendor.nvidia.cuda");
+    }
+
+    #[test]
+    fn rejects_unspecified_resource_state() {
+        let mut input = valid_resource();
+        input.state = semantic_v1::ResourceState::Unspecified as i32;
+        let error = resource_from_proto(input).expect_err("unspecified state must fail closed");
+        assert!(error.to_string().contains("RESOURCE_STATE_INVALID"));
+    }
+
+    #[test]
+    fn rejects_missing_topology_peer() {
+        let mut input = valid_resource();
+        input.links.push(semantic_v1::TopologyLink {
+            peer: None,
+            kind: "pcie".to_string(),
+            properties: HashMap::new(),
+        });
+        let error = resource_from_proto(input).expect_err("missing peer must fail closed");
+        assert!(error.to_string().contains("TOPOLOGY_PEER_MISSING"));
+    }
 }

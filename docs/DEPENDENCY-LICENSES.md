@@ -58,19 +58,18 @@ metadata; the lockfiles remain the reproducible version source.
 
 ## Direct Rust dependencies / Rust 直接依赖
 
-The `cyrene-reactor-host-placement` package is Apache-2.0 itself, but its
-resolved Platform dependencies retain their own licenses. In particular,
-`cy-adapter-client` is `AGPL-3.0-only`; distributing a binary that links it
-requires a separate legal review and the applicable source/notice obligations.
+The `cyrene-reactor-host-placement` package and all of its resolved Platform
+contract/placement dependencies are Apache-2.0. The component performs its
+strict protobuf projection locally and does not link Platform's AGPL
+`cy-adapter-client` IPC implementation.
 
-`cyrene-reactor-host-placement` 包自身是 Apache-2.0，但解析到的 Platform 依赖仍保留
-各自许可证。特别是 `cy-adapter-client` 为 `AGPL-3.0-only`；分发链接该依赖的二进制
-需要单独法律审查，并履行适用的源码与声明义务。
+`cyrene-reactor-host-placement` 包及其解析到的 Platform contract/placement 依赖均为
+Apache-2.0。该组件在本地执行严格 protobuf 投影，不链接 Platform 的 AGPL
+`cy-adapter-client` IPC 实现。
 
 | Package | Revision or version | SPDX license | Source / note |
 | --- | --- | --- | --- |
 | `cy-execution-fabric` | Platform `c59be6f2bd82489fbe933dadff84fc589e00afd9` | `Apache-2.0` | Platform execution attachment contract. |
-| `cy-adapter-client` | Platform `c59be6f2bd82489fbe933dadff84fc589e00afd9` | `AGPL-3.0-only` | Platform local IPC client; public binary distribution is a legal review gate. |
 | `cy-kernel-contract` | Platform `c59be6f2bd82489fbe933dadff84fc589e00afd9` | `Apache-2.0` | Platform contract crate. |
 | `cy-manifest` | Platform `c59be6f2bd82489fbe933dadff84fc589e00afd9` | `Apache-2.0` | Platform manifest crate. |
 | `cy-proto` | Platform `c59be6f2bd82489fbe933dadff84fc589e00afd9` | `Apache-2.0` | Platform generated protocol crate. |
@@ -122,8 +121,8 @@ cargo metadata --locked --format-version 1 \
 ```
 
 Before a public source or binary release, the generated report must be
-reviewed for `UNDECLARED` licenses, the AGPL Platform dependency, and any
+reviewed for `UNDECLARED` licenses and any
 new git dependency. A successful local export is not a legal approval.
 
-公开源码或二进制发布前，必须审查生成报告中的 `UNDECLARED` 许可证、AGPL Platform
-依赖与新增 git 依赖。本地导出成功不等于法律批准。
+公开源码或二进制发布前，必须审查生成报告中的 `UNDECLARED` 许可证与新增 git 依赖。
+本地导出成功不等于法律批准。

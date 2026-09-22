@@ -2,17 +2,14 @@
 
 ## Current position / 当前状态
 
-Reactor is prepared as a `PUBLIC_PRODUCT` source repository. The machine-readable
-policy and service manifest describe the intended target visibility as `public`.
-The public replacement must start from one parentless `main` commit; the former
-development history, branches, tags, pull-request refs, and reflogs belong only
-to a separate private archive. The GitHub hosting setting remains an explicit
-owner operation and must be switched and read back only after the gates below.
+Reactor is a public `PUBLIC_PRODUCT` source repository. The machine-readable
+policy and service manifest describe the current visibility as `public`. Its
+public history starts from the approved clean root; former private development
+history belongs only to the separate private archive.
 
-Reactor 已按 `PUBLIC_PRODUCT` 源码仓库准备。机器可读策略与服务清单将目标可见性描述为
-`public`。公开替换仓库必须从一个无父提交的 `main` 开始；原开发历史、分支、标签、pull-
-request refs 与 reflog 只保留在独立的私有归档中。GitHub 托管可见性仍需所有者在下方门禁
-完成后明确切换并回读。
+Reactor 已作为公开的 `PUBLIC_PRODUCT` 源码仓库托管。机器可读策略与服务清单均将当前
+可见性描述为 `public`。公开历史从已批准的 clean root 开始；原私有开发历史只保留在
+独立的私有归档中。
 
 The integration model is `develop` for daily work and `main` for releases. The
 automatic source and Product contract checks are the GitHub Actions workflows
@@ -28,16 +25,16 @@ GPU/runtime evidence.
 
 | Surface | Current honest status | What it does not prove |
 | --- | --- | --- |
-| Python runtime and Product tests | Local implementation and tests | Hosted exact-SHA execution or production deployment |
-| Rust host-placement checks | Local locked build/test surface | A complete public binary distribution license grant |
+| Python runtime and Product tests | Local tests plus executed exact-SHA GitHub Actions | Production deployment |
+| Rust host-placement checks | Locked CI build/test with only Apache-2.0 direct Platform dependencies | Full transitive legal review or a published binary |
 | `execution.engine.v1` | Direct Plugins seam; no concrete engine source in Reactor | Real accelerator acceptance for every engine/provider |
 | Exchange handoff | Explicit Product adapter with fail-closed behavior | Live Exchange availability or credentials |
 | Release automation | No repository release workflow is present | A published package, image, or immutable release tag |
 
 | 表面 | 当前真实状态 | 不能证明什么 |
 | --- | --- | --- |
-| Python runtime 与 Product 测试 | 本地实现与测试 | hosted exact-SHA 执行或生产部署 |
-| Rust host-placement 检查 | 本地锁定构建/测试表面 | 完整公开二进制分发许可 |
+| Python runtime 与 Product 测试 | 本地测试及已实际执行的 exact-SHA GitHub Actions | 生产部署 |
+| Rust host-placement 检查 | 仅含 Apache-2.0 Platform 直接依赖的锁定 CI 构建/测试 | 完整传递法律审查或已发布二进制 |
 | `execution.engine.v1` | Plugins 直连接缝；Reactor 不含具体引擎源码 | 每个引擎/提供方都已完成真实加速器验收 |
 | Exchange 交接 | 显式 Product 适配器，失败时 fail closed | Exchange 真实可用或凭据已配置 |
 | 发布自动化 | 当前没有仓库级发布 workflow | 已发布包、镜像或不可变 release tag |
@@ -57,26 +54,24 @@ cloning is claimed.
 1. The locked Plugins runtime revision is a git dependency whose upstream
    manifest currently does not declare a license. The dependency must receive
    explicit license metadata and be publicly cloneable.
-2. The Rust host-placement path resolves Platform's `AGPL-3.0-only`
-   `cy-adapter-client`. Legal review must decide whether to distribute that
-   binary path, separate the dependency, or publish the applicable source and
-   notices.
-3. Platform and Yield contract references are immutable git revisions today;
-   their public cloneability and exact-SHA availability must be confirmed before
-   an anonymous clean-clone build.
-4. A fresh exact-SHA GitHub Actions run must execute real jobs and pass. A
-   zero-step, quota, credential, or skipped result is `NOT_RUN`/`BLOCKED`, not
-   `PASS`.
 
 1. 锁定的 Plugins runtime revision 是 git 依赖，但其上游 manifest 当前没有声明许可证。
    必须补齐明确许可证元数据，并确保该依赖可公开克隆。
-2. Rust host-placement 路径解析到 Platform 的 `AGPL-3.0-only`
-   `cy-adapter-client`。必须通过法律审查决定是否分发该二进制路径、拆分依赖，或同时
-   发布适用的源码与声明。
-3. Platform 与 Yield 契约目前使用不可变 git revision；必须在匿名 clean-clone 构建前确认
-   它们可公开克隆并能按精确 SHA 获取。
-4. 必须有一次针对精确 SHA、实际执行 job 并通过的 GitHub Actions 运行。零步骤、配额、
-   凭据或 skipped 结果均属于 `NOT_RUN`/`BLOCKED`，不能写成 `PASS`。
+
+## Closed gates / 已关闭门禁
+
+- Host placement validates the public protobuf projection locally and no longer
+  resolves or links the AGPL `cy-adapter-client`; CI prevents regression.
+- The pinned Platform and Yield revisions are anonymously fetchable and are
+  resolved by executed GitHub Actions jobs.
+- Exact-SHA GitHub Actions jobs execute real checks; skipped or zero-step runs
+  are still never treated as evidence.
+
+- Host placement 在本地校验公开 protobuf 投影，不再解析或链接 AGPL
+  `cy-adapter-client`，且 CI 会防止回归。
+- 锁定的 Platform 与 Yield revision 可匿名获取，并已由实际执行的 GitHub Actions job
+  完成解析。
+- exact-SHA GitHub Actions job 会执行真实检查；skipped 或零步骤运行仍不能视为证据。
 
 See [`DEPENDENCY-LICENSES.md`](DEPENDENCY-LICENSES.md) for the license and
 SBOM entrypoints, and [`SECURITY.md`](../SECURITY.md) for the threat-boundary

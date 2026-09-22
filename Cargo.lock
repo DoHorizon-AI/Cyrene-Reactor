@@ -166,18 +166,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cy-adapter-client"
-version = "0.1.0"
-source = "git+https://github.com/DoHorizon-AI/Cyrene-Platform.git?rev=c59be6f2bd82489fbe933dadff84fc589e00afd9#c59be6f2bd82489fbe933dadff84fc589e00afd9"
-dependencies = [
- "cy-kernel-contract",
- "cy-proto",
- "nix",
- "prost",
- "prost-types",
-]
-
-[[package]]
 name = "cy-execution-fabric"
 version = "0.2.0"
 source = "git+https://github.com/DoHorizon-AI/Cyrene-Platform.git?rev=c59be6f2bd82489fbe933dadff84fc589e00afd9#c59be6f2bd82489fbe933dadff84fc589e00afd9"
@@ -223,7 +211,6 @@ name = "cyrene-reactor-host-placement"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "cy-adapter-client",
  "cy-execution-fabric",
  "cy-kernel-contract",
  "cy-manifest",
