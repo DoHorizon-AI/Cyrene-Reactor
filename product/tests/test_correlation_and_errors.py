@@ -8,17 +8,14 @@ import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-import pytest
 from fastapi.testclient import TestClient
 
 from cyrene_reactor_product.api import create_app
 from cyrene_reactor_product.errors import map_reactor_error
 from cyrene_reactor_product.logging import (
     format_cyrene_log,
-    is_sensitive_key,
     parse_w3c_traceparent,
     redact_attributes,
-    sanitize_correlation_id,
     sanitize_request_id,
 )
 
@@ -128,6 +125,11 @@ def test_api_traceparent_and_error_handling():
         problem = res.json()
         assert problem["code"] == "REACTOR_DEPLOYMENT_NOT_FOUND"
         assert problem.get("requestId") == req_id or problem.get("request_id") == req_id
-        assert problem.get("traceId") == "4bf92f3577b34da6a3ce929d0e0e4736" or problem.get("trace_id") == "4bf92f3577b34da6a3ce929d0e0e4736"
-        assert problem.get("recoveryAction") == "user_action_required" or problem.get("recovery_action") == "user_action_required"
-
+        assert (
+            problem.get("traceId") == "4bf92f3577b34da6a3ce929d0e0e4736"
+            or problem.get("trace_id") == "4bf92f3577b34da6a3ce929d0e0e4736"
+        )
+        assert (
+            problem.get("recoveryAction") == "user_action_required"
+            or problem.get("recovery_action") == "user_action_required"
+        )

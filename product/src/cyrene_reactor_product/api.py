@@ -11,7 +11,6 @@
 from __future__ import annotations
 
 import hashlib
-import re
 import secrets
 from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
@@ -57,7 +56,6 @@ from cyrene_reactor_product.logging import (
 from cyrene_reactor_product.remote_engine import RemoteServingExecutionPort
 from cyrene_reactor_product.service import ReactorService
 from cyrene_reactor_product.store import ReactorStore
-
 
 
 def create_app(

@@ -468,4 +468,3 @@ class ProblemDetails(ContractModel):
     resource_ref: str | None = None
     request_id: str | None = None
     recovery_action: str | None = None
-
