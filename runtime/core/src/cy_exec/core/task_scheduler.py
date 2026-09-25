@@ -26,7 +26,7 @@ from typing import Any, Callable, Dict, List, Tuple
 class SchedulerBusy(RuntimeError):
 	"""Raised when the queue is full and new tasks cannot be accepted.
 
-        中文：队列已满且无法接受新任务时引发。"""
+        中文:队列已满且无法接受新任务时引发。"""
 
 	# 说明：当调度队列已满时抛出该异常，用于上层进行背压 / 返回 503 相应。
 
@@ -55,7 +55,7 @@ class ScheduledTask:
 class TaskScheduler:
 	"""Executes callables on worker threads with simple QoS semantics.
 
-        中文：在工作线程中执行可调用对象，并提供简单的 QoS 语义。"""
+        中文:在工作线程中执行可调用对象,并提供简单的 QoS 语义。"""
 
 	def __init__(self, max_workers: int = 2, queue_size: int = 128) -> None:
 		self._queue: "queue.PriorityQueue[ScheduledTask]" = queue.PriorityQueue(queue_size)
@@ -111,7 +111,7 @@ class TaskScheduler:
 			self._queue.task_done()
 
 		# Drain remaining tasks with cancellation to avoid dangling futures.
-  # 中文：通过取消来排空剩余任务，避免留下未完成的 future。
+  # 中文:通过取消来排空剩余任务,避免留下未完成的 future。
 		while not self._queue.empty():
 			task = self._queue.get()
 			if task.future.set_running_or_notify_cancel():

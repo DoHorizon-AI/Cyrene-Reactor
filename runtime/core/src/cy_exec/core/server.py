@@ -74,7 +74,7 @@ class InferenceServer:
 	) -> None:
 		"""Delegate one model load attempt to the selected Plugin endpoint.
 
-         中文：将一次模型加载尝试委派给选定的 Plugin 端点。"""
+         中文:将一次模型加载尝试委派给选定的 Plugin 端点。"""
 		load_msg = f"正在通过插件加载模型 {model_id}..."
 		LOGGER.info(load_msg)
 		if progress_callback:
@@ -111,13 +111,13 @@ class InferenceServer:
 				return engine
 
 			# Resolve the Plugins-owned provider and delegate model loading.
-   # 中文：解析 Plugins 所有的提供方并委派模型加载。
+   # 中文:解析 Plugins 所有的提供方并委派模型加载。
 			if progress_callback:
 				progress_callback(f"正在连接插件提供者 {provider_id}...")
 			engine = self._engine_factory(provider_id)
 
 			# Product does not rewrite engine settings after a capability failure.
-   # 中文：能力调用失败后，Product 不会改写引擎设置。
+   # 中文:能力调用失败后,Product 不会改写引擎设置。
 			try:
 				self._load_model(
 					model_id,
@@ -356,24 +356,24 @@ class InferenceServer:
 	def get_loaded_models(self) -> List[str]:
 		"""Return model identities known to the Product coordinator.
 
-         中文：返回 Product 协调器已知的模型标识。"""
+         中文:返回 Product 协调器已知的模型标识。"""
 		return self._residency.get_loaded_models()
 
 	@property
 	def telemetry(self) -> Telemetry:
 		"""Return this server's canonical request telemetry.
 
-         中文：返回此服务器的规范请求遥测。"""
+         中文:返回此服务器的规范请求遥测。"""
 		return self._telemetry
 
 	def health_check(self) -> bool:
 		"""Return whether the Product coordinator accepts new work.
 
-         中文：返回 Product 协调器当前是否接受新任务。"""
+         中文:返回 Product 协调器当前是否接受新任务。"""
 		return not self._is_shutting_down
 
 	def get_memory_usage(self) -> Dict:
 		"""Return aggregate memory observations reported through engine ports.
 
-         中文：返回通过引擎端口上报的汇总内存观测。"""
+         中文:返回通过引擎端口上报的汇总内存观测。"""
 		return self._residency.memory_observation()

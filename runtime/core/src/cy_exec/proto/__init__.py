@@ -1,6 +1,6 @@
 """Generated CY-LLM protobuf messages and gRPC bindings.
 
-中文：生成的 CY-LLM protobuf 消息和 gRPC 绑定。"""
+中文:生成的 CY-LLM protobuf 消息和 gRPC 绑定。"""
 # ┌─────────────────────────────────────────────────────────────────────┐
 # │ 📄 runtime/core/src/cy_exec/proto/__init__.py
 # │ Module: runtime/core/src/cy_exec/proto/__init__

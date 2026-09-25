@@ -1,6 +1,6 @@
 """Health server package.
 
-中文：健康服务器软件包。"""
+中文:健康服务器软件包。"""
 # ┌─────────────────────────────────────────────────────────────────────┐
 # │ 📄 runtime/core/src/cy_exec/health/__init__.py
 # │ Module: runtime/core/src/cy_exec/health/__init__

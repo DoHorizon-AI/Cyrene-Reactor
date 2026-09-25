@@ -434,9 +434,9 @@ class ReactorStore:
         Both Product records and harvested runtime records land in this table so
         a console pages one ordered stream instead of merging two.
 
-            中文：为每个 Deployment 按单调递增序列追加诊断记录。
+            中文:为每个 Deployment 按单调递增序列追加诊断记录。
 
-                中文：Product 记录和收集到的运行时记录都会写入此表，使控制台只需分页读取一条有序数据流，而不必合并两个数据流。
+                中文:Product 记录和收集到的运行时记录都会写入此表,使控制台只需分页读取一条有序数据流,而不必合并两个数据流。
         """
 
         if not documents:
@@ -469,7 +469,7 @@ class ReactorStore:
     def deployment_diagnostics_count(self, deployment_id: UUID) -> int:
         """How many diagnostic records are already durable for a deployment.
 
-            中文：某个 Deployment 已持久化的诊断记录数量。"""
+            中文:某个 Deployment 已持久化的诊断记录数量。"""
 
         with self._lock:
             row = self._connection.execute(
@@ -495,7 +495,7 @@ class ReactorStore:
     def deployment_diagnostics_degraded(self, deployment_id: UUID) -> bool:
         """True when a persisted record shows the runtime lost output.
 
-            中文：当持久化记录表明运行时丢失了输出时返回 True。"""
+            中文:当持久化记录表明运行时丢失了输出时返回 True。"""
 
         with self._lock:
             row = self._connection.execute(
@@ -507,7 +507,7 @@ class ReactorStore:
     def runtime_diagnostics_cursor(self, deployment_id: UUID) -> int:
         """Highest runtime sequence already harvested for this deployment.
 
-            中文：此 Deployment 已收集到的最高运行时序列号。"""
+            中文:此 Deployment 已收集到的最高运行时序列号。"""
 
         with self._lock:
             row = self._connection.execute(
@@ -520,7 +520,7 @@ class ReactorStore:
     def set_runtime_diagnostics_cursor(self, deployment_id: UUID, sequence: int) -> None:
         """Record how much runtime output has been harvested.
 
-            中文：记录已收集的运行时输出量。"""
+            中文:记录已收集的运行时输出量。"""
 
         with self._lock, self._connection:
             self._connection.execute(

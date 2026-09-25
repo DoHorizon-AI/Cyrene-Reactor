@@ -1,7 +1,7 @@
 """
 Unit tests for Cyrene Reactor correlation propagation, error mapping, and logging.
 
-中文：Cyrene Reactor 关联信息传播、错误映射和日志的单元测试。
+中文:Cyrene Reactor 关联信息传播、错误映射和日志的单元测试。
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ def test_w3c_traceparent_parsing():
     assert span_id == "00f067aa0ba902b7"
 
     # All zeros rejection
-    # 中文：拒绝全零值。
+    # 中文:拒绝全零值。
     assert parse_w3c_traceparent("00-00000000000000000000000000000000-00f067aa0ba902b7-01") is None
     assert parse_w3c_traceparent("00-4bf92f3577b34da6a3ce929d0e0e4736-0000000000000000-01") is None
     assert parse_w3c_traceparent("invalid-traceparent") is None
@@ -111,12 +111,12 @@ def test_api_traceparent_and_error_handling():
         client = TestClient(app)
 
         # Send request with W3C traceparent and x-request-id
-        # 中文：发送包含 W3C traceparent 和 x-request-id 的请求。
+        # 中文:发送包含 W3C traceparent 和 x-request-id 的请求。
         traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
         req_id = "req-test-client-999"
 
         # Request unknown deployment to trigger 404 ProblemDetails
-        # 中文：请求未知 Deployment，以触发 404 ProblemDetails。
+        # 中文:请求未知 Deployment,以触发 404 ProblemDetails。
         res = client.get(
             "/api/v1/deployments/00000000-0000-0000-0000-000000000001",
             headers={"traceparent": traceparent, "x-request-id": req_id},

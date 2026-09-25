@@ -112,31 +112,31 @@ def test_direct_plugin_adapter_lifecycle_and_cancellation():
     adapter = DirectPluginExecutionEngineAdapter(binding, client=mock_client)
 
     # Initial state
-    # 中文：初始状态
+    # 中文:初始状态
     assert adapter.health_check() is False
     with pytest.raises(ServingPortFailure, match="Model is not loaded"):
         list(adapter.infer("test"))
 
     # Load model
-    # 中文：加载模型
+    # 中文:加载模型
     adapter.load_model("/path/to/test-model")
     assert adapter.health_check() is True
     assert adapter.get_model_info()["is_loaded"] is True
     assert adapter.get_model_info()["engine"] == "cyrene.engines.vllm"
 
     # Inference streaming
-    # 中文：推理流式输出
+    # 中文:推理流式输出
     tokens = list(adapter.infer("Hello"))
     assert len(tokens) == 1
     assert "Generated tokens for Hello" in tokens[0]
 
     # Cancellation fails closed cleanly
-    # 中文：取消请求以干净的失败即拒绝方式处理
+    # 中文:取消请求以干净的失败即拒绝方式处理
     with pytest.raises(ServingPortFailure, match="cancelled"):
         list(adapter.infer("Cancelled request", cancel_requested=True))
 
     # Unload model
-    # 中文：卸载模型
+    # 中文:卸载模型
     adapter.unload_model()
     assert adapter.health_check() is False
     assert adapter.get_model_info()["is_loaded"] is False
@@ -210,7 +210,7 @@ def test_direct_plugin_adapter_uses_plugins_owned_grpc_wire():
 def test_direct_plugin_binding_fails_closed_without_in_tree_fallback():
     """A connection failure remains a Product port failure without local fallback.
 
-        中文：连接失败仍作为 Product 端口故障返回，不回退到本地实现。"""
+        中文:连接失败仍作为 Product 端口故障返回,不回退到本地实现。"""
 
     class FailingClient:
         def invoke(self, **_kwargs):
@@ -229,7 +229,7 @@ def test_direct_plugin_binding_fails_closed_without_in_tree_fallback():
     engine = factory("cyrene.engines.vllm")
 
     # When remote endpoint fails, it must raise ServingPortFailure
-    # 中文：远程端点失败时必须抛出 ServingPortFailure
+    # 中文:远程端点失败时必须抛出 ServingPortFailure
     with pytest.raises(ServingPortFailure, match="Remote engine service unavailable"):
         engine.load_model("/models/meta-llama")
 
@@ -245,7 +245,7 @@ def test_direct_plugin_requires_connection_ref_or_client():
 
 def test_resolve_execution_engine_resolver_environment(monkeypatch):
     # Default profile -> DIRECT_PLUGIN and fail closed until a connection is configured.
-    # 中文：默认配置为 DIRECT_PLUGIN；配置连接前按失败即拒绝处理。
+    # 中文:默认配置为 DIRECT_PLUGIN;配置连接前按失败即拒绝处理。
     monkeypatch.delenv("CYRENE_SERVING_PROFILE", raising=False)
     monkeypatch.delenv("CYRENE_SERVING_CONNECTION_REF", raising=False)
     default_res = resolve_execution_engine_resolver()
@@ -254,7 +254,7 @@ def test_resolve_execution_engine_resolver_environment(monkeypatch):
         default_res.resolve(EXECUTION_ENGINE_REQUIREMENT)
 
     # DIRECT_PLUGIN via environment variable
-    # 中文：通过环境变量设置 DIRECT_PLUGIN
+    # 中文:通过环境变量设置 DIRECT_PLUGIN
     monkeypatch.setenv("CYRENE_SERVING_PROFILE", "DIRECT_PLUGIN")
     monkeypatch.setenv("CYRENE_SERVING_CONNECTION_REF", "grpc://127.0.0.1:50051")
     monkeypatch.setenv("CYRENE_SERVING_PROVIDER_ID", "cyrene.engines.vllm")
@@ -264,7 +264,7 @@ def test_resolve_execution_engine_resolver_environment(monkeypatch):
     assert isinstance(provider, DirectPluginEngineProvider)
 
     # Removed compatibility profiles are rejected instead of selecting local code.
-    # 中文：已移除的兼容配置会被拒绝，不会选择本地代码。
+    # 中文:已移除的兼容配置会被拒绝,不会选择本地代码。
     monkeypatch.setenv("CYRENE_SERVING_PROFILE", "LOCAL_ENGINE")
     monkeypatch.delenv("CYRENE_SERVING_CONNECTION_REF", raising=False)
     with pytest.raises(ServingPortFailure, match="SERVING_PROFILE_UNSUPPORTED"):
@@ -380,7 +380,7 @@ def test_direct_plugin_connection_ref_uses_sdk_local_target_validation():
 def test_in_tree_concrete_engines_are_absent_rea002():
     """REA-002: Reactor must not ship concrete execution-engine modules.
 
-        中文：REA-002：Reactor 不得随包发布具体执行引擎模块。"""
+        中文:REA-002:Reactor 不得随包发布具体执行引擎模块。"""
     from pathlib import Path
 
     engine_dir = Path(__file__).parents[1] / "src" / "cy_exec" / "engines"

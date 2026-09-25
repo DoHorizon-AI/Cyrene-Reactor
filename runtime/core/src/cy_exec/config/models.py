@@ -1,6 +1,6 @@
 """Product-side configuration models for the Reactor worker.
 
-中文：Reactor 工作器的 Product 侧配置模型。"""
+中文:Reactor 工作器的 Product 侧配置模型。"""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class ModelSpec(BaseModel):
     """One Product model binding projected into a Plugins-owned engine request.
 
-        中文：从单个 Product 模型绑定映射为 Plugins 所有引擎请求的配置。"""
+        中文:从单个 Product 模型绑定映射为 Plugins 所有引擎请求的配置。"""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -31,7 +31,7 @@ class ModelSpec(BaseModel):
 class WorkerConfig(BaseModel):
     """Reactor coordination configuration without hardware or engine authority.
 
-        中文：Reactor 协调配置，不包含硬件或引擎权威。"""
+        中文:Reactor 协调配置,不包含硬件或引擎权威。"""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -45,7 +45,7 @@ class WorkerConfig(BaseModel):
 class ServerConfig(BaseModel):
     """Product server configuration.
 
-        中文：Product 服务器配置。"""
+        中文:Product 服务器配置。"""
 
     host: str = "0.0.0.0"
     port: int = Field(default=50051, ge=1, le=65535)
@@ -60,7 +60,7 @@ class ServerConfig(BaseModel):
 class WorkerSettings(BaseSettings):
     """Environment projection for Product and Plugin binding configuration.
 
-        中文：Product 和 Plugin 绑定配置的环境变量投影。"""
+        中文:Product 和 Plugin 绑定配置的环境变量投影。"""
 
     provider_id: str | None = Field(default=None, alias="CYRENE_SERVING_PROVIDER_ID")
     model_registry: str | None = Field(default=None, alias="CY_LLM_MODEL_REGISTRY")

@@ -46,7 +46,7 @@ def _validate_model_version_readback(
 ) -> ModelVersionDocument:
     """Canonicalize host readback and verify both composed identity projections.
 
-        中文：规范化主机回读结果，并验证组合模型的两种身份投影。"""
+        中文:规范化主机回读结果,并验证组合模型的两种身份投影。"""
 
     returned = result.get("modelVersion")
     if not isinstance(returned, dict):
@@ -70,7 +70,7 @@ def _canonical_expected_model_version(
 ) -> ModelVersionDocument:
     """Validate a composed request before sending it to a remote host.
 
-        中文：向远程主机发送组合模型请求之前先进行验证。"""
+        中文:向远程主机发送组合模型请求之前先进行验证。"""
 
     canonical = canonical_model_version(value)
     if model_version_artifact(canonical) != model:
@@ -390,9 +390,9 @@ class RemoteServingExecutionPort:
         None so the Product still returns its own records and marks the page
         degraded instead of failing the request.
 
-            中文：通过绑定读取服务进程输出。
+            中文:通过绑定读取服务进程输出。
 
-                中文：若绑定无法响应（例如运行时版本较旧或发生临时故障），则返回 None。Product 仍会返回自身记录，并将页面标记为降级，而不是让请求失败。
+                中文:若绑定无法响应(例如运行时版本较旧或发生临时故障),则返回 None。Product 仍会返回自身记录,并将页面标记为降级,而不是让请求失败。
         """
 
         try:

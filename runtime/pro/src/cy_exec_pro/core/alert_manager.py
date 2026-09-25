@@ -1,6 +1,6 @@
 """Thread-safe threshold alerts with de-duplication and recovery events.
 
-中文：线程安全的阈值告警，支持去重和恢复事件。"""
+中文:线程安全的阈值告警,支持去重和恢复事件。"""
 # ┌─────────────────────────────────────────────────────────────────────┐
 # │ 📄 runtime/pro/src/cy_exec_pro/core/alert_manager.py
 # │ Module: runtime/pro/src/cy_exec_pro/core/alert_manager
@@ -24,7 +24,7 @@ LOGGER = logging.getLogger("cy_exec_pro.core.alert_manager")
 class AlertLevel(Enum):
     """Alert severity.
 
-        中文：告警严重级别。"""
+        中文:告警严重级别。"""
 
     INFO = "info"
     WARNING = "warning"
@@ -34,7 +34,7 @@ class AlertLevel(Enum):
 class AlertType(Enum):
     """Supported monitored signals.
 
-        中文：支持监测的信号类型。"""
+        中文:支持监测的信号类型。"""
 
     QUEUE_DEPTH = "queue_depth"
     MEMORY_PRESSURE = "memory_pressure"
@@ -45,7 +45,7 @@ class AlertType(Enum):
 class Alert:
     """One alert or recovery event.
 
-        中文：一条告警或恢复事件。"""
+        中文:一条告警或恢复事件。"""
 
     alert_type: AlertType
     level: AlertLevel
@@ -59,7 +59,7 @@ class Alert:
 class AlertManager:
     """Emit one alert per threshold excursion until recovery.
 
-        中文：阈值超限期间只发出一条告警，直到恢复后才可再次触发。"""
+        中文:阈值超限期间只发出一条告警,直到恢复后才可再次触发。"""
 
     def __init__(
         self,
@@ -85,7 +85,7 @@ class AlertManager:
     def check_queue_depth(self, depth: int) -> Alert | None:
         """Check queue depth against its threshold.
 
-            中文：检查队列深度是否达到阈值。"""
+            中文:检查队列深度是否达到阈值。"""
         return self._check(
             AlertType.QUEUE_DEPTH,
             float(depth),
@@ -100,7 +100,7 @@ class AlertManager:
     def check_memory_pressure(self, pressure: float) -> Alert | None:
         """Check memory pressure against its threshold.
 
-            中文：检查内存压力是否达到阈值。"""
+            中文:检查内存压力是否达到阈值。"""
         return self._check(
             AlertType.MEMORY_PRESSURE,
             pressure,
@@ -115,7 +115,7 @@ class AlertManager:
     def check_latency(self, latency_ms: float) -> Alert | None:
         """Check latency against its threshold.
 
-            中文：检查延迟是否达到阈值。"""
+            中文:检查延迟是否达到阈值。"""
         return self._check(
             AlertType.LATENCY_HIGH,
             latency_ms,
@@ -137,7 +137,7 @@ class AlertManager:
     ) -> Alert | None:
         """Apply common threshold, recovery, and callback behavior.
 
-            中文：应用通用的阈值判断、恢复和回调行为。"""
+            中文:应用通用的阈值判断、恢复和回调行为。"""
         with self._lock:
             if value > threshold:
                 if self._alert_states[alert_type]:
@@ -174,21 +174,21 @@ class AlertManager:
     def register_callback(self, callback: Callable[[Alert], None]) -> None:
         """Register an alert callback.
 
-            中文：注册告警回调。"""
+            中文:注册告警回调。"""
         with self._lock:
             self._callbacks.append(callback)
 
     def get_alert_state(self, alert_type: AlertType) -> bool:
         """Return whether an alert type is currently active.
 
-            中文：返回某种告警当前是否处于激活状态。"""
+            中文:返回某种告警当前是否处于激活状态。"""
         with self._lock:
             return self._alert_states.get(alert_type, False)
 
     def get_alert_history(self, limit: int = 100) -> list[Alert]:
         """Return up to ``limit`` recent alert events.
 
-            中文：最多返回 ``limit`` 条最近的告警事件。"""
+            中文:最多返回 ``limit`` 条最近的告警事件。"""
         with self._lock:
             return self._alert_history[-limit:]
 
@@ -207,7 +207,7 @@ class AlertManager:
     def reset(self) -> None:
         """Clear active states and alert history.
 
-            中文：清除当前激活状态和告警历史。"""
+            中文:清除当前激活状态和告警历史。"""
         with self._lock:
             for alert_type in self._alert_states:
                 self._alert_states[alert_type] = False

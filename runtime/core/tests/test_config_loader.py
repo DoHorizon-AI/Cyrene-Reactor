@@ -30,7 +30,7 @@ from cy_exec.config.config_loader import (
 def configured_plugin_provider(monkeypatch):
     """Give ordinary loader tests one explicit Plugins-owned provider binding.
 
-        中文：为普通加载器测试提供一个显式的 Plugins 所有提供方绑定。"""
+        中文:为普通加载器测试提供一个显式的 Plugins 所有提供方绑定。"""
 
     monkeypatch.setenv("CYRENE_SERVING_PROVIDER_ID", "cyrene.engines.fixture")
 
@@ -142,7 +142,7 @@ class TestEnvironmentOverrides:
     def test_env_override_provider(self):
         """The owner-resolved Plugin provider identity is preserved.
 
-            中文：保留通过 owner 解析得到的 Plugin 提供方标识。"""
+            中文:保留通过 owner 解析得到的 Plugin 提供方标识。"""
         original = os.environ.get('CYRENE_SERVING_PROVIDER_ID')
 
         try:
@@ -158,7 +158,7 @@ class TestEnvironmentOverrides:
     def test_empty_provider_fails_closed(self):
         """An empty binding identity must not trigger local selection.
 
-            中文：绑定标识为空时不得触发本地选择。"""
+            中文:绑定标识为空时不得触发本地选择。"""
         import importlib
         original_cy = os.environ.get('CYRENE_SERVING_PROVIDER_ID')
 
@@ -182,7 +182,7 @@ class TestEnvironmentOverrides:
         try:
             os.environ['CY_LLM_INTERNAL_TOKEN'] = 'secret-token-abc'
             # reload the module to re-evaluate import-time variables
-            # 中文：重新加载模块，以重新评估导入时变量。
+            # 中文:重新加载模块,以重新评估导入时变量。
             import cy_exec.utils.auth as auth_mod
             importlib.reload(auth_mod)
             assert auth_mod.get_internal_token() == 'secret-token-abc'

@@ -37,7 +37,7 @@ from cyrene_reactor_product.errors import ServingEngineFailure
 class _TestServingExecutionPort:
     """State-sharing test double for Product lifecycle orchestration only.
 
-        中文：仅用于 Product 生命周期协调的共享状态测试替身。"""
+        中文:仅用于 Product 生命周期协调的共享状态测试替身。"""
 
     def __init__(self, executions: dict[str, dict[str, Any]] | None = None) -> None:
         self.executions = executions if executions is not None else {}
@@ -313,7 +313,7 @@ def test_deployment_events_record_phase_transitions(tmp_path: Path) -> None:
             assert data["deploymentId"] == deployment_id
             events = data["events"]
             # At least 3 phase transitions recorded
-            # 中文：至少记录 3 次阶段转换。
+            # 中文:至少记录 3 次阶段转换。
             assert len(events) >= 3
             phases = [e["phase"] for e in events]
             assert "QUEUED" in phases
@@ -323,7 +323,7 @@ def test_deployment_events_record_phase_transitions(tmp_path: Path) -> None:
             assert [e["sequence"] for e in events] == list(range(1, len(events) + 1))
 
             # Stop deployment and check STOPPING and RELEASED events
-            # 中文：停止 Deployment，并检查 STOPPING 与 RELEASED 事件。
+            # 中文:停止 Deployment,并检查 STOPPING 与 RELEASED 事件。
             client.post(f"/api/v1/deployments/{deployment_id}/actions/stop")
             res_after_stop = client.get(f"/api/v1/deployments/{deployment_id}/events")
             assert res_after_stop.status_code == 200
@@ -334,7 +334,7 @@ def test_deployment_events_record_phase_transitions(tmp_path: Path) -> None:
             assert "RELEASED" in phases_stop
 
             # 404 for non-existent deployment
-            # 中文：不存在的 Deployment 返回 404。
+            # 中文:不存在的 Deployment 返回 404。
             missing = client.get(f"/api/v1/deployments/{uuid4()}/events")
             assert missing.status_code == 404
             assert missing.json()["code"] == "REACTOR_DEPLOYMENT_NOT_FOUND"

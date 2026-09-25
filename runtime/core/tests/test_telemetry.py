@@ -1,6 +1,6 @@
 """Tests for canonical Reactor request telemetry.
 
-中文：Reactor 规范请求遥测的测试。"""
+中文:Reactor 规范请求遥测的测试。"""
 # ┌─────────────────────────────────────────────────────────────────────┐
 # │ 📄 runtime/core/tests/test_telemetry.py
 # │ Module: runtime/core/tests/test_telemetry

@@ -1,6 +1,6 @@
 """Property tests migrated from the Pro alert manager tests.
 
-中文：从 Pro 告警管理器测试迁移的属性测试。"""
+中文:从 Pro 告警管理器测试迁移的属性测试。"""
 # ┌─────────────────────────────────────────────────────────────────────┐
 # │ 📄 runtime/pro/tests/test_alert_manager_pbt.py
 # │ Module: runtime/pro/tests/test_alert_manager_pbt

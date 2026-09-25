@@ -121,7 +121,7 @@ REACTOR_ERROR_MAPPINGS: dict[str, dict[str, str]] = {
 def map_reactor_error(raw_code: str) -> dict[str, str]:
     """Map a raw or legacy Reactor error code to canonical PRODUCT.REACTOR.<REASON>.
 
-        中文：将原始或旧版 Reactor 错误码映射为规范的 PRODUCT.REACTOR.<REASON>。"""
+        中文:将原始或旧版 Reactor 错误码映射为规范的 PRODUCT.REACTOR.<REASON>。"""
     if raw_code in REACTOR_ERROR_MAPPINGS:
         return REACTOR_ERROR_MAPPINGS[raw_code]
     normalized = raw_code.upper().replace(" ", "_")

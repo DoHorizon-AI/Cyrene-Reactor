@@ -1,6 +1,6 @@
 """Diagnostics paging tests for the Reactor Product surface.
 
-中文：Reactor Product 接口的诊断分页测试。"""
+中文:Reactor Product 接口的诊断分页测试。"""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ from cyrene_reactor_product.store import ReactorStore
 class _DiagnosticsPort:
     """Test double that answers the diagnostics route the way the plugin does.
 
-        中文：按 Plugin 行为响应诊断路由的测试替身。"""
+        中文:按 Plugin 行为响应诊断路由的测试替身。"""
 
     def __init__(self) -> None:
         self.pages: dict[str, dict[str, Any]] = {}
@@ -106,7 +106,7 @@ class _DiagnosticsPort:
 class _LegacyPort(_DiagnosticsPort):
     """A binding older than the diagnostics contract: no method at all.
 
-        中文：早于诊断契约的绑定：完全没有对应方法。"""
+        中文:早于诊断契约的绑定:完全没有对应方法。"""
 
     diagnostics = None  # type: ignore[assignment]
 
@@ -197,7 +197,7 @@ def test_deployment_diagnostics_merges_runtime_output_and_pages(tmp_path: Path) 
         assert body["diagnosticsDegraded"] is False
 
         # The runtime is harvested once; polling again does not duplicate it.
-        # 中文：运行时输出只收集一次；再次轮询不会重复记录。
+        # 中文:运行时输出只收集一次;再次轮询不会重复记录。
         before = len(body["items"])
         again = client.get(f"/api/v1/deployments/{deployment_id}/diagnostics").json()
         assert len(again["items"]) == before
@@ -208,7 +208,7 @@ def test_deployment_diagnostics_merges_runtime_output_and_pages(tmp_path: Path) 
         assert tail["items"] == []
 
         # New runtime output appears after the cursor advances.
-        # 中文：游标前进后会显示新的运行时输出。
+        # 中文:游标前进后会显示新的运行时输出。
         port.pages[deployment_id] = _runtime_page(2, "engine ready")
         follow_up = client.get(f"/api/v1/deployments/{deployment_id}/diagnostics").json()
         assert any(item["message"] == "engine ready" for item in follow_up["items"])
@@ -241,7 +241,7 @@ def test_deployment_diagnostics_degrades_for_a_legacy_binding(tmp_path: Path) ->
         body = page.json()
         assert body["diagnosticsDegraded"] is True
         # Product records are still returned.
-        # 中文：仍会返回 Product 记录。
+        # 中文:仍会返回 Product 记录。
         assert any(item["source"] == "product" for item in body["items"])
     app.state.reactor_store.close()
 
