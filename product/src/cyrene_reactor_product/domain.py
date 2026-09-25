@@ -413,7 +413,7 @@ class CreateDeploymentRequest(ContractModel):
         # The default FULL_MODEL keeps old request bodies valid. A supplied
         # composed ModelVersion is the only authority when that default is
         # present; an explicit composed composition must still agree.
-        # 中文：默认 FULL_MODEL 可继续接受旧版请求体。当请求提供组合 ModelVersion 时,它是唯一权威;
+        # 中文:默认 FULL_MODEL 可继续接受旧版请求体。当请求提供组合 ModelVersion 时,它是唯一权威;
         # 若显式指定了组合类型,其值仍必须一致。
         if (
             self.composition == ModelComposition.FULL_MODEL
