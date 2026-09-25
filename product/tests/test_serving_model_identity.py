@@ -21,7 +21,7 @@ from cyrene_reactor_product.remote_engine import (
 def _artifact() -> dict[str, Any]:
     """Return the minimal model artifact accepted by the Product contract.
 
-        中文:返回 Product 契约接受的最小模型 Artifact。"""
+    中文:返回 Product 契约接受的最小模型 Artifact。"""
 
     digest = "sha256:" + "a" * 64
     return {
@@ -37,7 +37,7 @@ def test_model_registry_mismatch_fails_the_started_deployment(
 ) -> None:
     """Require the intended model ID in the serving endpoint and persist FAILED.
 
-        中文:要求服务端点中的模型 ID 与预期一致,并持久化 FAILED 状态。"""
+    中文:要求服务端点中的模型 ID 与预期一致,并持久化 FAILED 状态。"""
 
     credential = tmp_path / "credential"
     credential.write_text("serving-test-token-" + "x" * 32)

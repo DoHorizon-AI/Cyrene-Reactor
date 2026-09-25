@@ -29,17 +29,17 @@ from cyrene_reactor_product.errors import ServingEngineFailure
 class ServingExecutionPort(Protocol):
     """Product lifecycle port implemented by an externally configured binding.
 
-        中文:由外部配置绑定实现的 Product 生命周期端口。"""
+    中文:由外部配置绑定实现的 Product 生命周期端口。"""
 
     def import_model(self, command: CreateModelImportRequest) -> ModelImportResult:
         """Validate and publish an external model source through the binding.
 
-            中文:通过绑定验证并发布外部模型源。"""
+        中文:通过绑定验证并发布外部模型源。"""
 
     def prepare(self, deployment_id: UUID) -> EngineHandle | None:
         """Return stable recovery evidence before any execution mutation.
 
-            中文:在修改执行状态之前返回稳定的恢复证据。"""
+        中文:在修改执行状态之前返回稳定的恢复证据。"""
 
     def start(
         self,
@@ -51,7 +51,7 @@ class ServingExecutionPort(Protocol):
     ) -> EngineHandle:
         """Start serving and return opaque execution evidence.
 
-            中文:启动服务并返回不透明的执行证据。"""
+        中文:启动服务并返回不透明的执行证据。"""
 
     def inspect(
         self,
@@ -64,7 +64,7 @@ class ServingExecutionPort(Protocol):
     ) -> EngineObservation:
         """Verify live endpoint identity through the configured binding.
 
-            中文:通过已配置的绑定验证活动端点标识。"""
+        中文:通过已配置的绑定验证活动端点标识。"""
 
     def stop(
         self,
@@ -77,20 +77,20 @@ class ServingExecutionPort(Protocol):
     ) -> EngineObservation:
         """Stop an identity-verified serving execution.
 
-            中文:停止已验证标识的服务执行实例。"""
+        中文:停止已验证标识的服务执行实例。"""
 
     def diagnostics(
         self, execution_ref: str, *, after_sequence: int = 0, limit: int = 200
     ) -> dict[str, Any] | None:
         """Read the runtime's own output, or None when the binding cannot report it.
 
-            中文:读取运行时自身的输出;若绑定无法提供,则返回 None。"""
+        中文:读取运行时自身的输出;若绑定无法提供,则返回 None。"""
 
 
 class UnconfiguredServingExecutionPort:
     """Fail closed until an external serving binding is configured.
 
-        中文:在配置外部服务绑定之前按失败即拒绝处理。"""
+    中文:在配置外部服务绑定之前按失败即拒绝处理。"""
 
     def import_model(self, command: CreateModelImportRequest) -> ModelImportResult:
         del command

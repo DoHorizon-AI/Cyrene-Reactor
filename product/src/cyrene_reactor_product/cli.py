@@ -33,7 +33,7 @@ from cyrene_reactor_product.store import ReactorStore
 def _configuration(path: Path) -> dict[str, Any]:
     """Read the private Product configuration shared by every command.
 
-        中文:读取所有命令共用的私有 Product 配置。"""
+    中文:读取所有命令共用的私有 Product 配置。"""
 
     document = json.loads(path.read_text())
     if not isinstance(document, dict):
@@ -44,7 +44,7 @@ def _configuration(path: Path) -> dict[str, Any]:
 def _engines(configuration: dict[str, Any]) -> dict[str, ServingExecutionPort]:
     """Build one remote serving port per configured binding.
 
-        中文:为每个已配置绑定构建一个远程服务端口。"""
+    中文:为每个已配置绑定构建一个远程服务端口。"""
 
     bindings = [
         ServingBindingConfiguration.model_validate(item)
@@ -56,7 +56,7 @@ def _engines(configuration: dict[str, Any]) -> dict[str, ServingExecutionPort]:
 def _service(configuration: dict[str, Any]) -> ReactorService:
     """Build the Product service with its configured serving bindings.
 
-        中文:使用已配置的服务绑定构建 Product 服务。"""
+    中文:使用已配置的服务绑定构建 Product 服务。"""
 
     engines = _engines(configuration)
     if not engines:

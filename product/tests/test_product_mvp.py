@@ -37,7 +37,7 @@ from cyrene_reactor_product.errors import ServingEngineFailure
 class _TestServingExecutionPort:
     """State-sharing test double for Product lifecycle orchestration only.
 
-        中文:仅用于 Product 生命周期协调的共享状态测试替身。"""
+    中文:仅用于 Product 生命周期协调的共享状态测试替身。"""
 
     def __init__(self, executions: dict[str, dict[str, Any]] | None = None) -> None:
         self.executions = executions if executions is not None else {}

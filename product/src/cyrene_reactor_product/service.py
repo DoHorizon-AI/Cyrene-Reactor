@@ -62,7 +62,7 @@ def request_hash(command: CreateDeploymentRequest) -> str:
 def serving_artifact(deployment: Deployment) -> ArtifactRef:
     """Return the validated base/full projection used for placement.
 
-        中文:返回供放置流程使用的已验证基础模型/完整模型投影。"""
+    中文:返回供放置流程使用的已验证基础模型/完整模型投影。"""
 
     if deployment.model_artifact is None:
         raise ReactorProductError(
@@ -77,7 +77,7 @@ def serving_artifact(deployment: Deployment) -> ArtifactRef:
 def serving_identity(deployment: Deployment) -> str:
     """Return the immutable identity expected in runtime readback.
 
-        中文:返回运行时回读时应出现的不可变标识。"""
+    中文:返回运行时回读时应出现的不可变标识。"""
 
     if (
         deployment.composition == ModelComposition.BASE_PLUS_LORA
@@ -90,7 +90,7 @@ def serving_identity(deployment: Deployment) -> str:
 def runtime_model_version(deployment: Deployment) -> ModelVersionDocument | None:
     """Pass a version to the runtime only for the composed serving path.
 
-        中文:仅在组合模型服务路径中向运行时传递版本。"""
+    中文:仅在组合模型服务路径中向运行时传递版本。"""
 
     if deployment.composition == ModelComposition.BASE_PLUS_LORA:
         return deployment.model_version
@@ -140,7 +140,7 @@ def _fail_composed_identity(
 ) -> None:
     """Clean up a start whose engine identity did not echo the canonical version.
 
-        中文:清理启动后未回显规范版本标识的执行实例。"""
+    中文:清理启动后未回显规范版本标识的执行实例。"""
 
     execution_ref = getattr(handle, "execution_ref", None)
     endpoint_url = getattr(handle, "endpoint_url", None)
@@ -176,7 +176,7 @@ def _verify_started_model_identity(
 ) -> None:
     """Run an adapter-specific serving registry readback after startup.
 
-        中文:启动后执行适配器专属的服务注册表回读。"""
+    中文:启动后执行适配器专属的服务注册表回读。"""
 
     verifier = getattr(engine, "verify_served_model", None)
     if callable(verifier):
@@ -192,7 +192,7 @@ def _cleanup_started_execution(
 ) -> str | None:
     """Release a process that failed post-start identity verification.
 
-        中文:释放启动后标识验证失败的进程。"""
+    中文:释放启动后标识验证失败的进程。"""
 
     try:
         if model_version is not None:
@@ -772,7 +772,7 @@ class ReactorService:
     ) -> None:
         """Append one Product-owned diagnostic line for a lifecycle transition.
 
-            中文:为一次生命周期转换追加一条由 Product 持有的诊断记录。"""
+        中文:为一次生命周期转换追加一条由 Product 持有的诊断记录。"""
 
         self.store.append_deployment_diagnostics(
             deployment_id,
@@ -794,7 +794,7 @@ class ReactorService:
     ) -> DiagnosticsPage:
         """Harvest the runtime output and return one bounded, ordered page.
 
-            中文:收集运行时输出并返回一页有界、按顺序排列的记录。"""
+        中文:收集运行时输出并返回一页有界、按顺序排列的记录。"""
 
         if after_sequence < 0:
             raise ReactorProductError(
@@ -821,7 +821,7 @@ class ReactorService:
     def _harvest_runtime_diagnostics(self, deployment: Deployment) -> bool:
         """Persist new runtime records; report whether the binding could report.
 
-            中文:持久化新的运行时记录,并报告绑定是否能提供这些记录。"""
+        中文:持久化新的运行时记录,并报告绑定是否能提供这些记录。"""
 
         execution_ref = self.store.get_execution_ref(deployment.id)
         if execution_ref is None:
@@ -900,7 +900,7 @@ class ReactorService:
 def _bound_diagnostics(items: list[DiagnosticRecord]) -> list[DiagnosticRecord]:
     """Trim one page to the serialized byte budget shared with the console.
 
-        中文:按与控制台共用的序列化字节预算裁剪单页内容。"""
+    中文:按与控制台共用的序列化字节预算裁剪单页内容。"""
 
     kept = list(items)
     while (

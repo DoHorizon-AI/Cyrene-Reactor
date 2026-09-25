@@ -26,7 +26,7 @@ from cyrene_reactor_product.store import ReactorStore
 class _DiagnosticsPort:
     """Test double that answers the diagnostics route the way the plugin does.
 
-        中文:按 Plugin 行为响应诊断路由的测试替身。"""
+    中文:按 Plugin 行为响应诊断路由的测试替身。"""
 
     def __init__(self) -> None:
         self.pages: dict[str, dict[str, Any]] = {}
@@ -106,7 +106,7 @@ class _DiagnosticsPort:
 class _LegacyPort(_DiagnosticsPort):
     """A binding older than the diagnostics contract: no method at all.
 
-        中文:早于诊断契约的绑定:完全没有对应方法。"""
+    中文:早于诊断契约的绑定:完全没有对应方法。"""
 
     diagnostics = None  # type: ignore[assignment]
 

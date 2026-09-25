@@ -61,7 +61,7 @@ def canonical_model_version(value: Mapping[str, Any]) -> ModelVersionDocument:
 def model_version_artifact(document: Mapping[str, Any]) -> ArtifactRef:
     """Return the serving ArtifactRef projection for a canonical version.
 
-        中文:返回规范版本对应的服务 ArtifactRef 投影。"""
+    中文:返回规范版本对应的服务 ArtifactRef 投影。"""
 
     composition = document.get("composition")
     if composition == "FULL_MODEL":
@@ -143,7 +143,7 @@ DiagnosticLevel = Literal["debug", "info", "warn", "error"]
 class DiagnosticRecord(ContractModel):
     """One redacted diagnostic line a console may show verbatim.
 
-        中文:控制台可以原样展示的一条脱敏诊断记录。"""
+    中文:控制台可以原样展示的一条脱敏诊断记录。"""
 
     sequence: int = Field(ge=1)
     timestamp: str

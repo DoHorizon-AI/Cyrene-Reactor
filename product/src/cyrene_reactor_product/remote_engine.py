@@ -46,7 +46,7 @@ def _validate_model_version_readback(
 ) -> ModelVersionDocument:
     """Canonicalize host readback and verify both composed identity projections.
 
-        中文:规范化主机回读结果,并验证组合模型的两种身份投影。"""
+    中文:规范化主机回读结果,并验证组合模型的两种身份投影。"""
 
     returned = result.get("modelVersion")
     if not isinstance(returned, dict):
@@ -70,7 +70,7 @@ def _canonical_expected_model_version(
 ) -> ModelVersionDocument:
     """Validate a composed request before sending it to a remote host.
 
-        中文:向远程主机发送组合模型请求之前先进行验证。"""
+    中文:向远程主机发送组合模型请求之前先进行验证。"""
 
     canonical = canonical_model_version(value)
     if model_version_artifact(canonical) != model:

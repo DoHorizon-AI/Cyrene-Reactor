@@ -25,7 +25,7 @@ PROJECTED_ARTIFACT_REF = "../platform/artifact-ref.schema.json"
 def _project(value: Any) -> Any:
     """Rebase only the known ArtifactRef link while preserving schema meaning.
 
-        中文:仅重设已知的 ArtifactRef 链接,同时保持架构语义不变。"""
+    中文:仅重设已知的 ArtifactRef 链接,同时保持架构语义不变。"""
 
     if isinstance(value, dict):
         return {key: _project(child) for key, child in value.items()}
@@ -39,7 +39,7 @@ def _project(value: Any) -> Any:
 def _git_show(repository: Path, revision: str, path: str) -> bytes:
     """Read one immutable Git object without modifying the source checkout.
 
-        中文:读取一个不可变的 Git 对象,不修改源码检出目录。"""
+    中文:读取一个不可变的 Git 对象,不修改源码检出目录。"""
 
     return subprocess.check_output(["git", "-C", str(repository), "show", f"{revision}:{path}"])
 
@@ -47,7 +47,7 @@ def _git_show(repository: Path, revision: str, path: str) -> bytes:
 def main() -> None:
     """Write or verify the generated schema and its immutable provenance.
 
-        中文:写入或验证生成的架构及其不可变来源信息。"""
+    中文:写入或验证生成的架构及其不可变来源信息。"""
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--yield-repository", type=Path, required=True)
