@@ -6,7 +6,8 @@ versioned ``execution.engine.v1`` capability in Cyrene-Plugins-Official.
 
 中文:由 Product 所有的服务生命周期端口;仓库内不包含引擎实现。
 
-中文:该端口承载 Product Deployment 标识和生命周期意图。具体模型加载、推理、硬件调优和提供方行为属于 `Cyrene-Plugins-Official` 中有版本的 ``execution.engine.v1`` 能力。
+中文：该端口承载 Product Deployment 标识和生命周期意图。具体模型加载、推理、
+硬件调优和提供方行为属于 `Cyrene-Plugins-Official` 中有版本的 ``execution.engine.v1`` 能力。
 """
 
 from __future__ import annotations

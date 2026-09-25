@@ -106,7 +106,8 @@ def _require_model_version_keyword(engine: Any, operation: str) -> None:
 
         中文:拒绝无法接收组合模型文档的引擎。
 
-        中文:调用前会先检查方法签名,因此缺少旧版关键字参数会转化为稳定的“不支持此能力”错误。若兼容引擎内部抛出 ``TypeError``,则会按原样向上传播。
+        中文：调用前会先检查方法签名,因此缺少旧版关键字参数会转化为稳定的“不支持此能力”错误。
+        若兼容引擎内部抛出 ``TypeError``,则会按原样向上传播。
     """
 
     method = getattr(engine, operation, None)

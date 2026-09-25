@@ -39,7 +39,8 @@ def canonical_model_version(value: Mapping[str, Any]) -> ModelVersionDocument:
 
         中文:通过 Yield ModelVersion SDK 验证,并返回其 wire 格式。
 
-            中文:Reactor 将 Yield 规范文档作为不透明的 Product 状态保存,不会重新实现 ModelVersion 标识或血缘规则。
+            中文：Reactor 将 Yield 规范文档作为不透明的 Product 状态保存,
+            不会重新实现 ModelVersion 标识或血缘规则。
     """
 
     try:
@@ -412,7 +413,8 @@ class CreateDeploymentRequest(ContractModel):
         # The default FULL_MODEL keeps old request bodies valid. A supplied
         # composed ModelVersion is the only authority when that default is
         # present; an explicit composed composition must still agree.
-        # 中文:默认 FULL_MODEL 可继续接受旧版请求体。当请求提供组合 ModelVersion 时,它是唯一权威;若显式指定了组合类型,其值仍必须一致。
+        # 中文：默认 FULL_MODEL 可继续接受旧版请求体。当请求提供组合 ModelVersion 时,它是唯一权威;
+        # 若显式指定了组合类型,其值仍必须一致。
         if (
             self.composition == ModelComposition.FULL_MODEL
             and version_composition == ModelComposition.BASE_PLUS_LORA
