@@ -1,4 +1,6 @@
-"""Worker entrypoint for the Product-owned inference coordinator."""
+"""Worker entrypoint for the Product-owned inference coordinator.
+
+中文:Product 所有推理协调器的工作进程入口。"""
 # ┌─────────────────────────────────────────────────────────────────────┐
 # │ 📄 runtime/core/src/cy_exec/main.py
 # │ Module: runtime/core/src/cy_exec/main

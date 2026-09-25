@@ -79,3 +79,37 @@ disclaimer.
 
 许可证与 SBOM 入口见 [`DEPENDENCY-LICENSES.md`](DEPENDENCY-LICENSES.md)，安全边界限制见
 [`SECURITY.md`](../SECURITY.md)。
+---
+<!-- Chinese Translation / 中文翻译 -->
+
+# 公开源码发布说明
+
+## 当前状态
+
+Reactor 是公开的 `PUBLIC_PRODUCT` 源码仓库。机器可读策略和服务清单将当前可见性标记为 `public`。公开历史从获批的干净根提交开始；此前的私有开发历史只属于单独的私有归档。
+
+日常工作使用 `develop` 集成，发布使用 `main`。自动源码和 Product 契约检查由 `.github/workflows/` 下的 GitHub Actions workflow 负责。Azure pipeline 是手动补充通道，用于受保护凭据、精确的跨仓验收、部署或 GPU/运行时证据。
+
+## 证据边界
+
+| 范围 | 当前如实状态 | 不能证明的内容 |
+|---|---|---|
+| Python 运行时和 Product 测试 | 本地测试以及已执行的精确 SHA GitHub Actions | 生产部署 |
+| Rust host-placement 检查 | 仅依赖 Apache-2.0 Platform 直接依赖的锁定 CI 构建/测试 | 完整传递依赖法律审查或已发布二进制 |
+| `execution.engine.v1` | Plugins 直连接口；Reactor 不包含具体引擎源码 | 每个引擎/提供方都通过了真实加速器验收 |
+| Exchange 交接 | 显式 Product 适配器，失败时按拒绝处理 | Exchange 实际可用或凭据已配置 |
+| 发布自动化 | 仓库内没有发布 workflow | 已发布软件包、镜像或不可变 release tag |
+
+[`API.md`](API.md) 中的状态名称说明实现或本地契约证据，不能解读为托管 CI、GPU、安全或发布验收。具体服务引擎仍由 Plugins 所有。在宣称支持匿名克隆之前，必须确认当前锁文件可安装，且不依赖未声明的私有检出目录。
+
+## 公开发布阻塞项
+
+1. 锁定的 Plugins runtime 修订版本是 git 依赖，但其上游清单目前没有声明许可证。该依赖必须补充明确的许可证元数据，并且可以公开克隆。
+
+## 已关闭门禁
+
+- Host placement 在本地验证公开 protobuf 投影，不再解析或链接 AGPL `cy-adapter-client`；CI 会防止回归。
+- 固定的 Platform 和 Yield 修订版本可匿名获取，并已由实际执行的 GitHub Actions job 解析。
+- 精确 SHA 的 GitHub Actions job 会运行真实检查；跳过或零步骤运行始终不能视为证据。
+
+许可证和 SBOM 入口见 [`DEPENDENCY-LICENSES.md`](DEPENDENCY-LICENSES.md)，安全边界免责声明见 [`SECURITY.md`](../SECURITY.md)。

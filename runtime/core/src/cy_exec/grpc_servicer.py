@@ -150,6 +150,7 @@ class AiInferenceServicerImpl(AiInferenceServicer):
         engine_kwargs = {}
 
         # Pass owner-defined configuration through without interpreting vendor semantics.
+        # 中文:透传 owner 定义的配置,不解释厂商语义。
         if spec.quantization:
             engine_kwargs["quantization"] = spec.quantization
 
@@ -203,6 +204,7 @@ class AiInferenceServicerImpl(AiInferenceServicer):
 
                 # Chunks are transport units; report their observed rate without
                 # interpreting a specific Plugin provider's tokenization.
+                # 中文:分块是传输单位;报告观测到的速率,但不解释特定 Plugin 提供方的 token 化方式。
                 tokens_count = chunk_index
                 tps = tokens_count / gen_duration
 

@@ -1,4 +1,6 @@
-"""Tests for active Reactor runtime constants."""
+"""Tests for active Reactor runtime constants.
+
+中文:Reactor 当前运行时常量的测试。"""
 # ┌─────────────────────────────────────────────────────────────────────┐
 # │ 📄 runtime/core/tests/test_constants.py
 # │ Module: runtime/core/tests/test_constants

@@ -34,3 +34,32 @@ The adapter should validate model identity, request limits, streaming mode, and 
 - 保留模型与引擎身份，便于复现诊断。
 - 不得为方便而绕过能力解析或审批策略。
 - 绝不能在协议响应中放入密钥或不受限制的原始追踪信息。
+---
+<!-- Chinese Translation / 中文翻译 -->
+
+# MCP 集成
+
+## 当前状态
+
+Reactor 的主要服务边界是 gRPC/HTTP，而非 MCP。未来任何面向 MCP 的工具或模型适配器都必须是现有服务和能力契约上的轻量协议转换层。
+
+## 预期适配器边界
+
+```mermaid
+flowchart LR
+    MCP["MCP 客户端"] --> Adapter["协议适配器"]
+    Adapter --> Contract["服务契约"]
+    Contract --> Resolver["能力解析器"]
+    Resolver --> Engine["获批引擎提供方"]
+    Contract --> Result["有类型的推理结果"]
+```
+
+适配器应在分发前验证模型身份、请求限制、流式模式和授权上下文。它不应暴露任意引擎内部细节、进程控制或文件系统操作。
+
+## 评审清单
+
+- 将 MCP 传输错误与服务错误、引擎错误分开。
+- 与原生协议复用相同的请求准入、超时、取消和健康策略。
+- 保留模型和引擎标识，确保诊断可复现。
+- 不得为了方便绕过能力解析或审批策略。
+- 绝不能在协议响应中放入密钥或不受限制的原始追踪记录。

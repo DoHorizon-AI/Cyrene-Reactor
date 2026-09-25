@@ -134,6 +134,7 @@ class AsyncAiInferenceServicer(AiInferenceServicer):
                 generation_kwargs["repetition_penalty"] = gen_params.repetition_penalty
 
         # OpenTelemetry span
+        # 中文:OpenTelemetry span 追踪跨度。
         span = None
         if OTEL_AVAILABLE and hasattr(self, '_tracer') and self._tracer:
             span = self._tracer.start_as_current_span("StreamPredict")
