@@ -1,4 +1,6 @@
-"""Pro utility modules."""
+"""Pro utility modules.
+
+中文：Pro 工具模块。"""
 # ┌─────────────────────────────────────────────────────────────────────┐
 # │ 📄 runtime/pro/src/cy_exec_pro/utils/__init__.py
 # │ Module: runtime/pro/src/cy_exec_pro/utils/__init__

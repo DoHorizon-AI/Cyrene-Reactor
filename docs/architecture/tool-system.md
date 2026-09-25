@@ -44,3 +44,44 @@ sequenceDiagram
 - 已加载模型的驻留策略由 Reactor 负责；Prompt 缓存与具体 KV 分配仍由插件实现负责。
 - 各适配器都必须保持故障关闭的健康状态与优雅排空行为。
 - 生成的 protobuf 模块是契约工具的输出，不是手工维护的实现文件。
+---
+<!-- Chinese Translation / 中文翻译 -->
+
+# 工具与能力系统
+
+## 引擎能力模型
+
+Reactor 通过一个有版本的能力绑定解析服务引擎，不在本仓库内嵌或选择厂商实现。
+
+| 接口 | 职责 | 源码区域 |
+|---|---|---|
+| `ServingEngineProvider` | 创建兼容的服务引擎 | `runtime/core/src/cy_exec/capability_seam.py` |
+| `TaskScheduler` | 限定单个工作器的请求队列并应用背压 | `runtime/core/src/cy_exec/core/` |
+| Host-placement adapter | 向 Platform 提交放置输入，不重复实现放置逻辑 | `components/host-placement/` |
+
+## 请求路径
+
+```mermaid
+sequenceDiagram
+    participant G as 网关
+    participant S as InferenceServer
+    participant Q as TaskScheduler
+    participant E as Engine Plugin
+    participant H as 健康与指标
+
+    G->>S: 预测或流式预测
+    S->>Q: 准入有界请求
+    Q->>E: execution.engine.v1
+    E-->>Q: 返回 token 或结果
+    Q-->>S: 流式返回有类型分块
+    S-->>G: 响应
+    S->>H: 记录健康状态与遥测
+```
+
+## 非归属规则
+
+- Platform Node Agent 负责硬件事实时，不要把通用硬件探测移入 Reactor。
+- 引擎插件不能成为部署状态或请求生命周期的权威。
+- 已加载模型驻留策略由 Reactor 负责；prompt cache 和具体 KV 分配仍由 Plugin 负责。
+- 各适配器都必须保持失败即拒绝的健康行为和优雅排空行为。
+- 生成的 protobuf 模块是契约工具的产物，不是手工维护的实现文件。

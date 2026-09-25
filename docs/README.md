@@ -50,3 +50,43 @@ dependency versions, and CI execution steps are unchanged.
 
 本次公开发布准备只修改许可证、Markdown 文档、治理元数据与公开证据卫生；环境特定的运行
 回执不进入公开候选，不改变运行时行为、生成绑定、依赖版本或 CI 执行步骤。
+---
+<!-- Chinese Translation / 中文翻译 -->
+
+# Reactor 文档
+
+Reactor 文档索引。
+
+## 仓库范围
+
+Reactor 负责模型推理和服务，包括引擎准入、模型加载、请求调度、流式输出、健康检查、内存策略和服务生命周期。它使用 Platform 契约和可替换的引擎能力。
+
+运行时由规范 Python core、可选 Pro 扩展和 Rust 集成组成。生成的 protobuf 绑定属于生成产物，文档会说明其用途，但不会手工编辑。
+
+## 阅读导航
+
+| 路径 | 职责 |
+|---|---|
+| [`architecture/overview.md`](architecture/overview.md) | 服务生命周期、运行时拓扑和所有权边界 |
+| [`architecture/tool-system.md`](architecture/tool-system.md) | 引擎接口、有界调度、驻留和放置边界 |
+| [`architecture/mcp-integration.md`](architecture/mcp-integration.md) | 协议适配器边界与非归属规则 |
+| [`modules/reactor/README.md`](modules/reactor/README.md) | 模块地图和建议阅读顺序 |
+| [`glossary.md`](glossary.md) | 服务双语术语 |
+| [`faq.md`](faq.md) | 常见问题与排障指南 |
+| [`API.md`](API.md) | Product/API 契约与生命周期状态图 |
+| [`architecture-and-lifecycle.md`](architecture-and-lifecycle.md) | 当前/目标架构和所有权说明 |
+| [`REPOSITORY-LIFECYCLE.md`](REPOSITORY-LIFECYCLE.md) | 仓库治理与发布边界 |
+| [`PUBLICATION.md`](PUBLICATION.md) | 公开源码目标、证据边界和阻塞项 |
+| [`DEPENDENCY-LICENSES.md`](DEPENDENCY-LICENSES.md) | 直接依赖许可证与 SBOM 入口 |
+| [`logging-and-errors.md`](logging-and-errors.md) | 跨仓日志、错误码和诊断规范（草案 v0.1） |
+
+## 建议阅读顺序
+
+1. 阅读 [`architecture/overview.md`](architecture/overview.md)，了解服务生命周期。
+2. 阅读 [`architecture/tool-system.md`](architecture/tool-system.md)，了解引擎和资源所有权。
+3. 阅读 [`modules/reactor/README.md`](modules/reactor/README.md)，定位 core、Pro 和原生组件。
+4. 按需查阅 [`API.md`](API.md)、[`architecture-and-lifecycle.md`](architecture-and-lifecycle.md)、[`glossary.md`](glossary.md) 和 [`faq.md`](faq.md)。
+
+## 变更边界
+
+本次公开发布准备只修改许可证、文档、治理元数据和公开证据卫生。环境专属的运行回执不纳入公开候选；运行时行为、生成绑定、依赖版本和 CI 执行步骤均保持不变。

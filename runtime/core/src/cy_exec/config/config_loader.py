@@ -1,4 +1,6 @@
-"""Load Reactor Product configuration without probing hardware or selecting engines."""
+"""Load Reactor Product configuration without probing hardware or selecting engines.
+
+中文：加载 Reactor Product 配置，不探测硬件也不选择引擎。"""
 
 from __future__ import annotations
 
@@ -19,7 +21,9 @@ ENV_DEFAULT_ADAPTER = "CY_LLM_DEFAULT_ADAPTER"
 
 
 def _parse_registry_json(payload: str) -> dict[str, ModelSpec]:
-    """Parse the Product model registry with a strict, current schema."""
+    """Parse the Product model registry with a strict, current schema.
+
+        中文：使用严格的当前架构解析 Product 模型注册表。"""
 
     data = json.loads(payload)
     if not isinstance(data, dict):
@@ -34,7 +38,9 @@ def _parse_registry_json(payload: str) -> dict[str, ModelSpec]:
 
 
 def load_model_registry(path: str | None = None) -> dict[str, ModelSpec]:
-    """Load model bindings from JSON, a file, or the explicit default fields."""
+    """Load model bindings from JSON, a file, or the explicit default fields.
+
+        中文：从 JSON、文件或显式默认字段加载模型绑定。"""
 
     if ENV_MODEL_REGISTRY in os.environ:
         return _parse_registry_json(os.environ[ENV_MODEL_REGISTRY])
@@ -55,7 +61,9 @@ def load_model_registry(path: str | None = None) -> dict[str, ModelSpec]:
 
 
 def load_worker_config(registry_path: str | None = None) -> WorkerConfig:
-    """Load Product coordination and selected Plugin identity."""
+    """Load Product coordination and selected Plugin identity.
+
+        中文：加载 Product 协调设置和所选 Plugin 标识。"""
 
     provider_id = os.environ.get(ENV_SERVING_PROVIDER_ID, "").strip()
     if not provider_id:
@@ -73,7 +81,9 @@ def load_worker_config(registry_path: str | None = None) -> WorkerConfig:
 
 
 def print_config_help() -> None:
-    """Print current Product and direct Plugin configuration fields."""
+    """Print current Product and direct Plugin configuration fields.
+
+        中文：打印当前 Product 和直连 Plugin 配置字段。"""
 
     print(
         "\n".join(

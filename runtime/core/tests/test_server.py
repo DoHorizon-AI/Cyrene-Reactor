@@ -48,7 +48,9 @@ class TestInferenceServer:
         assert server is not None
 
     def test_ensure_model_delegates_to_plugin_engine(self, server, mock_engine):
-        """Model loading delegates through the selected Plugin provider."""
+        """Model loading delegates through the selected Plugin provider.
+
+            中文：模型加载会委派给选定的 Plugin 提供方。"""
         loaded = server.ensure_model(
             "test-model",
             model_path="/valid/model",

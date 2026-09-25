@@ -1,4 +1,6 @@
-"""Unit tests for the health server fail-closed semantics."""
+"""Unit tests for the health server fail-closed semantics.
+
+中文：健康服务器失败即拒绝语义的单元测试。"""
 # ┌─────────────────────────────────────────────────────────────────────┐
 # │ 📄 runtime/core/tests/test_health_server.py
 # │ Module: runtime/core/tests/test_health_server

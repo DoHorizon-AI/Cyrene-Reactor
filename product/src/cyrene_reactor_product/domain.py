@@ -36,6 +36,10 @@ def canonical_model_version(value: Mapping[str, Any]) -> ModelVersionDocument:
 
     Reactor stores the canonical Yield document as opaque Product state. It
     deliberately does not reimplement ModelVersion identity or lineage rules.
+
+        中文：通过 Yield ModelVersion SDK 验证，并返回其 wire 格式。
+
+            中文：Reactor 将 Yield 规范文档作为不透明的 Product 状态保存，不会重新实现 ModelVersion 标识或血缘规则。
     """
 
     try:
@@ -54,7 +58,9 @@ def canonical_model_version(value: Mapping[str, Any]) -> ModelVersionDocument:
 
 
 def model_version_artifact(document: Mapping[str, Any]) -> ArtifactRef:
-    """Return the serving ArtifactRef projection for a canonical version."""
+    """Return the serving ArtifactRef projection for a canonical version.
+
+        中文：返回规范版本对应的服务 ArtifactRef 投影。"""
 
     composition = document.get("composition")
     if composition == "FULL_MODEL":
@@ -134,7 +140,9 @@ DiagnosticLevel = Literal["debug", "info", "warn", "error"]
 
 
 class DiagnosticRecord(ContractModel):
-    """One redacted diagnostic line a console may show verbatim."""
+    """One redacted diagnostic line a console may show verbatim.
+
+        中文：控制台可以原样展示的一条脱敏诊断记录。"""
 
     sequence: int = Field(ge=1)
     timestamp: str
@@ -404,6 +412,7 @@ class CreateDeploymentRequest(ContractModel):
         # The default FULL_MODEL keeps old request bodies valid. A supplied
         # composed ModelVersion is the only authority when that default is
         # present; an explicit composed composition must still agree.
+        # 中文：默认 FULL_MODEL 可继续接受旧版请求体。当请求提供组合 ModelVersion 时，它是唯一权威；若显式指定了组合类型，其值仍必须一致。
         if (
             self.composition == ModelComposition.FULL_MODEL
             and version_composition == ModelComposition.BASE_PLUS_LORA

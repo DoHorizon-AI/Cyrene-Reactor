@@ -1,4 +1,6 @@
-"""Reserved namespace for optional Product-side inference coordination."""
+"""Reserved namespace for optional Product-side inference coordination.
+
+中文：为可选 Product 侧推理协调保留的命名空间。"""
 # ┌─────────────────────────────────────────────────────────────────────┐
 # │ 📄 runtime/pro/src/cy_exec_pro/engines/__init__.py
 # │ Module: runtime/pro/src/cy_exec_pro/engines/__init__

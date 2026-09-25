@@ -99,6 +99,7 @@ class ConfigWatcher:
 
         self._thread: Optional[threading.Thread] = None
         self._observer: Optional[Any] = None  # watchdog Observer
+                                              # 中文：watchdog Observer 观察器。
 
         # 初始化 hash
         self._update_hash()

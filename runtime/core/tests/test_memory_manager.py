@@ -1,4 +1,6 @@
-"""Tests for Reactor's Product-owned model residency registry."""
+"""Tests for Reactor's Product-owned model residency registry.
+
+中文：Reactor Product 所有模型驻留注册表的测试。"""
 # ┌─────────────────────────────────────────────────────────────────────┐
 # │ 📄 runtime/core/tests/test_memory_manager.py
 # │ Module: runtime/core/tests/test_memory_manager

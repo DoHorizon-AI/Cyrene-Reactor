@@ -2,6 +2,10 @@
 
 Concrete inference engines live in ``Cyrene-Plugins-Official`` and are reached
 through the versioned direct Plugin runtime.
+
+中文：由 Product 所有的执行引擎端口类型。
+
+中文：具体推理引擎位于 ``Cyrene-Plugins-Official``，通过有版本的直连 Plugin 运行时调用。
 """
 # ┌─────────────────────────────────────────────────────────────────────┐
 # │ 📄 runtime/core/src/cy_exec/engines/__init__.py
