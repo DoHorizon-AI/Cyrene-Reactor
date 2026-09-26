@@ -27,6 +27,10 @@ jobs:
       AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
       AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
       AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      REACTOR_CONTROL_CREDENTIAL_SECRET_URI: ${{ vars.REACTOR_CONTROL_CREDENTIAL_SECRET_URI }}
+      REACTOR_WORKSPACE_CREDENTIAL_MAP_SECRET_URI: ${{ vars.REACTOR_WORKSPACE_CREDENTIAL_MAP_SECRET_URI }}
+      REACTOR_WORKSPACE_SERVING_BINDING_GRANTS_SECRET_URI: ${{ vars.REACTOR_WORKSPACE_SERVING_BINDING_GRANTS_SECRET_URI }}
+      REACTOR_WORKSPACE_AUTH_IDENTITY: ${{ vars.REACTOR_WORKSPACE_AUTH_IDENTITY }}
 
     steps:
       - name: Require Azure OIDC configuration
@@ -37,6 +41,30 @@ jobs:
               exit 1
             fi
           done
+
+      - name: Keep Reactor auth rollout disabled without conditional ACA updates
+        shell: bash
+        run: |
+          configured=0
+          for variable in \
+            REACTOR_CONTROL_CREDENTIAL_SECRET_URI \
+            REACTOR_WORKSPACE_CREDENTIAL_MAP_SECRET_URI \
+            REACTOR_WORKSPACE_SERVING_BINDING_GRANTS_SECRET_URI; do
+            if [[ -n "${!variable}" ]]; then
+              configured=$((configured + 1))
+            fi
+          done
+
+          if [[ "$configured" == "0" && -z "$REACTOR_WORKSPACE_AUTH_IDENTITY" ]]; then
+            echo "Reactor auth references are unset; continuing with the existing image-only deployment."
+            exit 0
+          fi
+          if [[ "$configured" != "3" || -z "$REACTOR_WORKSPACE_AUTH_IDENTITY" ]]; then
+            echo "The Reactor control credential, Workspace map, binding grants, and identity must be configured together." >&2
+            exit 1
+          fi
+          echo "Automated Reactor auth promotion is disabled: ACA updates have no documented conditional ETag guard, so an update could overwrite a newer revision. Use the reviewed manual deployment procedure in docs/operations/ACA_WORKSPACE_SERVICE_AUTH.md." >&2
+          exit 1
 
       - name: Checkout Cyrene-Reactor
         uses: actions/checkout@v5
@@ -100,12 +128,27 @@ jobs:
             ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
             ${{ steps.meta.outputs.image }}:latest
 
+      - name: Require internal ACA ingress before changes
+        shell: bash
+        run: |
+          ingress_external=$(az containerapp show \
+            --name "$AZURE_APP_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --query "properties.configuration.ingress.external" \
+            --output tsv)
+          if [[ "$ingress_external" != "false" ]]; then
+            echo "Refusing ACA update because Reactor ingress is not confirmed internal." >&2
+            exit 1
+          fi
+
       - name: Update Azure Container App
         run: |
           az containerapp update \
             --name "$AZURE_APP_NAME" \
             --resource-group "$AZURE_RESOURCE_GROUP" \
-            --image "${{ steps.meta.outputs.full_image }}"
+            --image "${{ steps.meta.outputs.full_image }}" \
+            --only-show-errors \
+            --output none
 
       - name: Verify healthy internal revision
         run: |
