@@ -130,8 +130,8 @@ class InferenceServer:
 			except Exception:
 				try:
 					engine.unload_model()
-				except Exception:
-					pass
+				except Exception as unload_err:
+					LOGGER.warning("Failed to unload engine after load error: %s", unload_err)
 				raise
 
 			if progress_callback:
@@ -350,8 +350,8 @@ class InferenceServer:
 		for model_id in sorted(self._residency.get_loaded_models()):
 			try:
 				self.unload_model(model_id)
-			except Exception:
-				pass
+			except Exception as unload_err:
+				LOGGER.warning("Failed to unload model %s during shutdown: %s", model_id, unload_err)
 
 	def get_loaded_models(self) -> List[str]:
 		"""Return model identities known to the Product coordinator.
