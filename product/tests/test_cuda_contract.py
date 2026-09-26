@@ -67,7 +67,11 @@ class UncertainEngine:
 
 def test_uncertain_start_preserves_identity_for_stop_and_idempotent_replay(tmp_path: Path) -> None:
     engine = UncertainEngine()
-    app = create_app(database_path=tmp_path / "product.sqlite3", engines={"selected": engine})
+    app = create_app(
+        allow_unauthenticated_dev=True,
+        database_path=tmp_path / "product.sqlite3",
+        engines={"selected": engine},
+    )
     model = package(tmp_path / "model")
     artifact = LocalArtifactProvider(tmp_path / "cas").publish_portable_directory(
         model, kind=YieldArtifactKind.MODEL

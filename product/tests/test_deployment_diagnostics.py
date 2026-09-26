@@ -195,7 +195,9 @@ def test_store_pages_diagnostics_and_tracks_the_runtime_cursor(tmp_path: Path) -
 
 def test_deployment_diagnostics_merges_runtime_output_and_pages(tmp_path: Path) -> None:
     port = _DiagnosticsPort()
-    app = create_app(database_path=tmp_path / "reactor.sqlite3", engine=port)
+    app = create_app(
+        allow_unauthenticated_dev=True, database_path=tmp_path / "reactor.sqlite3", engine=port
+    )
     with TestClient(app) as client:
         created = client.post("/api/v1/deployments", json=_payload())
         assert created.status_code == 201, created.text
@@ -238,7 +240,9 @@ def test_deployment_diagnostics_merges_runtime_output_and_pages(tmp_path: Path) 
 
 def test_runtime_degradation_is_published(tmp_path: Path) -> None:
     port = _DiagnosticsPort()
-    app = create_app(database_path=tmp_path / "reactor.sqlite3", engine=port)
+    app = create_app(
+        allow_unauthenticated_dev=True, database_path=tmp_path / "reactor.sqlite3", engine=port
+    )
     with TestClient(app) as client:
         deployment_id = client.post("/api/v1/deployments", json=_payload()).json()["id"]
         port.pages[deployment_id] = _runtime_page(1, "line", degraded=True)
@@ -249,7 +253,11 @@ def test_runtime_degradation_is_published(tmp_path: Path) -> None:
 
 
 def test_deployment_diagnostics_degrades_for_a_legacy_binding(tmp_path: Path) -> None:
-    app = create_app(database_path=tmp_path / "reactor.sqlite3", engine=_LegacyPort())
+    app = create_app(
+        allow_unauthenticated_dev=True,
+        database_path=tmp_path / "reactor.sqlite3",
+        engine=_LegacyPort(),
+    )
     with TestClient(app) as client:
         deployment_id = client.post("/api/v1/deployments", json=_payload()).json()["id"]
         page = client.get(f"/api/v1/deployments/{deployment_id}/diagnostics")
@@ -272,7 +280,11 @@ def test_remote_diagnostics_fault_keeps_request_trace(
         raise ValueError("injected diagnostics failure")
 
     monkeypatch.setattr(RemoteServingExecutionPort, "request", fail_request)
-    app = create_app(database_path=tmp_path / "reactor.sqlite3", engine=_FailingDiagnosticsPort())
+    app = create_app(
+        allow_unauthenticated_dev=True,
+        database_path=tmp_path / "reactor.sqlite3",
+        engine=_FailingDiagnosticsPort(),
+    )
     trace_id = "4bf92f3577b34da6a3ce929d0e0e4736"
     span_id = "00f067aa0ba902b7"
     with TestClient(app) as client:
@@ -298,7 +310,11 @@ def test_remote_diagnostics_fault_keeps_request_trace(
 
 
 def test_unknown_deployment_diagnostics_is_not_found(tmp_path: Path) -> None:
-    app = create_app(database_path=tmp_path / "reactor.sqlite3", engine=_DiagnosticsPort())
+    app = create_app(
+        allow_unauthenticated_dev=True,
+        database_path=tmp_path / "reactor.sqlite3",
+        engine=_DiagnosticsPort(),
+    )
     with TestClient(app) as client:
         response = client.get(f"/api/v1/deployments/{uuid4()}/diagnostics")
         assert response.status_code == 404

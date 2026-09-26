@@ -58,6 +58,10 @@ from cyrene_reactor_product.logging import (
 from cyrene_reactor_product.remote_engine import RemoteServingExecutionPort
 from cyrene_reactor_product.service import ReactorService
 from cyrene_reactor_product.store import ReactorStore
+from cyrene_reactor_product.workspace_auth import (
+    WorkspaceServiceAuthenticator,
+    WorkspaceServingBindingGrantSet,
+)
 
 
 def create_app(
@@ -66,13 +70,25 @@ def create_app(
     engine: ServingExecutionPort | None = None,
     engines: dict[str, ServingExecutionPort] | None = None,
     credential_file: Path | None = None,
+    workspace_credential_map_json: str | None = None,
+    workspace_serving_binding_grants_json: str | None = None,
+    allow_unauthenticated_dev: bool = False,
     exchange_receivers: dict[str, ExchangeHandoff] | None = None,
 ) -> FastAPI:
     """Build Reactor with explicit Product and serving adapters. | 创建 Reactor 产品应用。"""
 
+    workspace_auth = WorkspaceServiceAuthenticator(workspace_credential_map_json)
+    workspace_binding_grants = WorkspaceServingBindingGrantSet(
+        workspace_serving_binding_grants_json
+    )
     store = ReactorStore(database_path)
     serving_engine = engine or UnconfiguredServingExecutionPort()
-    service = ReactorService(store=store, engine=serving_engine, engines=engines)
+    service = ReactorService(
+        store=store,
+        engine=serving_engine,
+        engines=engines,
+        workspace_serving_binding_grants=workspace_binding_grants.grants,
+    )
     token = credential_file.read_text().strip() if credential_file else None
     if credential_file and (len(token or "") < 32 or credential_file.stat().st_mode & 0o077):
         raise ValueError("REACTOR_CREDENTIAL_INVALID")
@@ -80,9 +96,14 @@ def create_app(
     def authorize(request: Request) -> None:
         if request.url.path in {"/healthz", "/readyz", "/"}:
             return
-        if token is not None and not secrets.compare_digest(
-            request.headers.get("authorization", ""), "Bearer " + token
-        ):
+        if workspace_auth.protects(request.url.path):
+            workspace_auth.authorize(request)
+            return
+        if token is None:
+            if allow_unauthenticated_dev:
+                return
+            raise HTTPException(503, "REACTOR_CONTROL_AUTH_UNAVAILABLE")
+        if not secrets.compare_digest(request.headers.get("authorization", ""), "Bearer " + token):
             raise HTTPException(403, "REACTOR_PERMISSION_DENIED")
 
     app = FastAPI(
@@ -394,7 +415,7 @@ def create_app(
         command: CreateModelImportRequest,
         idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", max_length=200),
     ) -> ModelImport:
-        return service.create_model_import(command, idempotency_key)
+        return create_model_import_resource(command, idempotency_key)
 
     @app.get(
         "/api/v1/model-imports",
@@ -402,6 +423,45 @@ def create_app(
         response_model_exclude_none=True,
     )
     def list_model_imports() -> list[ModelImport]:
+        return list_model_import_resources()
+
+    @app.post(
+        "/internal/workspace/v1/model-imports",
+        response_model=ModelImport,
+        response_model_exclude_none=True,
+        status_code=201,
+        include_in_schema=False,
+    )
+    def workspace_create_model_import(
+        command: CreateModelImportRequest,
+        request: Request,
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", max_length=200),
+    ) -> ModelImport:
+        return service.create_model_import(
+            command,
+            idempotency_key,
+            workspace_scope=request.state.workspace_scope,
+        )
+
+    @app.get(
+        "/internal/workspace/v1/model-imports",
+        response_model=list[ModelImport],
+        response_model_exclude_none=True,
+        include_in_schema=False,
+    )
+    def workspace_list_model_imports(request: Request) -> list[ModelImport]:
+        scope = request.state.workspace_scope
+        return service.list_model_imports_for_workspace(scope)
+
+    def create_model_import_resource(
+        command: CreateModelImportRequest,
+        idempotency_key: str | None,
+    ) -> ModelImport:
+        """Run the same Product command from either authenticated API surface."""
+        return service.create_model_import(command, idempotency_key)
+
+    def list_model_import_resources() -> list[ModelImport]:
+        """Read the same Product projection from either API surface."""
         return service.list_model_imports()
 
     @app.get(

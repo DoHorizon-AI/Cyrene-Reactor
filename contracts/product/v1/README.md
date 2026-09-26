@@ -63,6 +63,57 @@ must not expose or create a second Kernel Operation API.
 startup. Replaying the same canonical body returns that Deployment's current
 state, including `FAILED`; conflicting body reuse returns
 `REACTOR_IDEMPOTENCY_CONFLICT`.
+
+## Workspace private service routes
+
+`workspace-private.openapi.yaml` defines private `GET` and `POST`
+`/internal/workspace/v1/model-imports` routes. Product maps the bearer to a
+fixed organization and Workspace using the server-side
+`REACTOR_WORKSPACE_CREDENTIAL_MAP` JSON setting. It stores only SHA-256
+digests, never bearer values. Tokens must be operator-generated random secrets
+with at least 32 bytes of entropy. Distinct digests may map to the same scope
+for rotation; duplicate digests and malformed maps are rejected. The map is
+limited to 1,024 credentials and 256 KiB, and comparisons scan the full map.
+
+```json
+{"version":1,"credentials":[{"tokenSha256":"<lowercase SHA-256 hex>","organizationId":"org-id","workspaceId":"workspace-id"}]}
+```
+
+Private creates also require `REACTOR_WORKSPACE_SERVING_BINDING_GRANTS`. Its
+operator-owned allowlist uses explicit `(servingBindingId, organizationId,
+workspaceId)` triples; configured or historical bindings receive no implicit
+grant:
+
+```json
+{"version":1,"grants":[{"servingBindingId":"serving-id","organizationId":"org-id","workspaceId":"workspace-id"}]}
+```
+
+Product assigns scope from this server-side map; the request body cannot
+choose it. The `ModelImport`, trusted scope row, and optional idempotency
+record are committed in one SQLite transaction. Private list reads join the
+exact organization and Workspace scope. Legacy `/api/v1/model-imports` list
+and get-by-id reads expose only unscoped imports; legacy-created imports remain
+unscoped. Deployment and DeploymentDraft resources use separate tables and do
+not resolve imports by ModelImport ID.
+
+The private bearer authenticates the Platform service only, not a user,
+Workspace member, or role. It is independent from the legacy `ControlBearer`.
+Missing map configuration returns `503`, unknown bearers return `401`, and
+malformed maps prevent startup. Missing legacy `credential_file` configuration
+also fails closed with `503` on every non-health `/api/v1` route. Private
+creates also require an explicit `REACTOR_WORKSPACE_SERVING_BINDING_GRANTS`
+allowlist. Each grant binds one `servingBindingId` to one organization and
+Workspace; existing bindings receive no implicit grant. An ungranted binding
+returns `403` before import execution or Product writes. A missing allowlist
+grants no private create access; malformed grant configuration prevents
+startup. Anonymous legacy access
+is available only when code explicitly sets `allow_unauthenticated_dev=True`
+for local development or tests. Private routes still require their dedicated
+credentials, and private creates require binding grants in that mode. The current Container Apps
+workflow updates images but does not configure the ControlBearer, Workspace
+credential map, or Workspace binding grant settings; operators must configure
+them before production use. Create retains the existing `201` response and
+optional `Idempotency-Key` behavior.
 ---
 <!-- Chinese Translation / 中文翻译 -->
 
@@ -101,3 +152,21 @@ API 根路径为 `/api/v1`，并采用 Workspace 的 `product-http-v1` 兼容配
 MVP 为同步接口并返回 `201`。生产 reconcile 可支持 RFC 7240，并返回 `202`，其中 `Location` 指向 Product 所有的 Deployment。不得暴露或创建第二套 Kernel Operation API。
 
 `Idempotency-Key` 会在引擎启动前将创建命令映射到持久化 Deployment。重放相同规范请求体时返回该 Deployment 当前状态，包括 `FAILED`；若复用该键但请求体冲突，则返回 `REACTOR_IDEMPOTENCY_CONFLICT`。
+
+## Workspace 私有服务路由
+
+`workspace-private.openapi.yaml` 定义私有 `GET` 和 `POST /internal/workspace/v1/model-imports` 路由。Product 从服务端 `REACTOR_WORKSPACE_CREDENTIAL_MAP` JSON 配置将 Bearer 映射到固定组织和 Workspace。配置只保存 SHA-256 摘要，不保存 Bearer 明文。运维人员应生成至少 32 字节熵的随机 token。轮换时允许不同摘要映射到同一范围；重复摘要和格式错误的 map 会被拒绝。映射最多 1,024 个凭据、256 KiB，比较过程扫描完整映射。
+
+```json
+{"version":1,"credentials":[{"tokenSha256":"<小写 SHA-256 十六进制摘要>","organizationId":"组织 ID","workspaceId":"Workspace ID"}]}
+```
+
+私有创建还需要 `REACTOR_WORKSPACE_SERVING_BINDING_GRANTS`。其 operator-owned allowlist 只接受明确的 `(servingBindingId, organizationId, workspaceId)` 三元组；已配置或历史 binding 不会自动获得 grant：
+
+```json
+{"version":1,"grants":[{"servingBindingId":"serving-id","organizationId":"组织 ID","workspaceId":"Workspace ID"}]}
+```
+
+Product 从服务端映射赋予可信范围，body 不能选择范围。ModelImport、可信 scope 行和可选幂等记录在一个 SQLite 事务中提交。私有列表只通过组织和 Workspace 精确范围 JOIN 读取。旧 `/api/v1/model-imports` 列表和按 ID 读取只暴露无范围导入；legacy 创建的导入仍是无范围数据。Deployment 与 DeploymentDraft 使用独立表，不会通过 ModelImport ID 读取导入记录。
+
+私有 Bearer 只认证 Platform 服务，不建立用户、Workspace 成员或角色身份；它与 legacy `ControlBearer` 分离。缺少 map 返回 `503`，未知 Bearer 返回 `401`，格式错误的 map 会阻止启动。私有创建还要求明确的 `REACTOR_WORKSPACE_SERVING_BINDING_GRANTS` allowlist；每条 grant 将 `servingBindingId` 固定绑定到一个组织和 Workspace，旧 binding 不会自动获得 grant。未授权的 binding 会在引擎执行和 Product 写入前返回 `403`。缺少 legacy `credential_file` 时，所有非健康检查 `/api/v1` 路由也会以 `503` 失败关闭。只有本地开发或测试代码显式设置 `allow_unauthenticated_dev=True` 才允许匿名 legacy 访问；该模式下私有路由仍需要专用 map，私有创建还需要 binding grants。当前 Container Apps workflow 只更新镜像，不配置 ControlBearer、Workspace map 或 Workspace binding grants；启用生产调用前，运维人员必须配置这些项。创建操作保留现有 `201` 响应和可选 `Idempotency-Key` 行为。

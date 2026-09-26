@@ -1,0 +1,65 @@
+openapi: 3.1.2
+info:
+  title: Cyrene Reactor Workspace Private Product API
+  version: 1.0.0
+  description: >-
+    Private service-to-service routes used by the Workspace Product projection.
+    The bearer authenticates the Platform service only; it carries no user,
+    member, or role identity.
+paths:
+  /internal/workspace/v1/model-imports:
+    get:
+      operationId: workspaceListModelImports
+      summary: List Reactor-owned ModelImports
+      security:
+        - WorkspaceServiceBearer: []
+      responses:
+        '200':
+          description: Current Product-owned ModelImport projections
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: ./openapi.yaml#/components/schemas/ModelImport
+        '401':
+          description: Workspace service bearer is missing or invalid
+        '503':
+          description: Workspace service credential is not configured
+    post:
+      operationId: workspaceCreateModelImport
+      summary: Create a Reactor-owned ModelImport
+      description: Preserves the existing Product request, response, and replay behavior.
+      security:
+        - WorkspaceServiceBearer: []
+      parameters:
+        - $ref: ./openapi.yaml#/components/parameters/IdempotencyKey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./openapi.yaml#/components/schemas/CreateModelImportRequest
+      responses:
+        '201':
+          description: Product accepted and persisted the ModelImport
+          content:
+            application/json:
+              schema:
+                $ref: ./openapi.yaml#/components/schemas/ModelImport
+        '401':
+          description: Workspace service bearer is missing or invalid
+        '403':
+          description: Serving binding is not granted to the authenticated Workspace
+        '409':
+          $ref: ./openapi.yaml#/components/responses/Problem
+        '422':
+          $ref: ./openapi.yaml#/components/responses/Problem
+        '503':
+          description: Workspace service credential is not configured
+components:
+  securitySchemes:
+    WorkspaceServiceBearer:
+      type: http
+      scheme: bearer
+      description: Dedicated deployment secret scoped to these fixed Workspace routes.
