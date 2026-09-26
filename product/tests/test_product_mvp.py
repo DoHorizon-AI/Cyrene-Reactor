@@ -14,7 +14,7 @@ import json
 import sqlite3
 from pathlib import Path
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
 from jsonschema import Draft202012Validator, FormatChecker, validate
@@ -22,15 +22,53 @@ from openapi_spec_validator.readers import read_from_filename
 from referencing import Registry, Resource
 
 from cyrene_reactor_product import create_app
-from cyrene_reactor_product.domain import ArtifactRef, EngineHandle, EngineObservation, NodeRef
+from cyrene_reactor_product.domain import (
+    ArtifactRef,
+    CreateModelImportRequest,
+    EngineHandle,
+    EngineObservation,
+    ModelImportResult,
+    ModelImportValidation,
+    NodeRef,
+)
 from cyrene_reactor_product.errors import ServingEngineFailure
 
 
 class _TestServingExecutionPort:
-    """State-sharing test double for Product lifecycle orchestration only."""
+    """State-sharing test double for Product lifecycle orchestration only.
+
+    中文:仅用于 Product 生命周期协调的共享状态测试替身。"""
 
     def __init__(self, executions: dict[str, dict[str, Any]] | None = None) -> None:
         self.executions = executions if executions is not None else {}
+        self.imports: dict[str, CreateModelImportRequest] = {}
+
+    def import_model(self, command: CreateModelImportRequest) -> ModelImportResult:
+        source = command.source.repository or command.source.path or ""
+        self.imports[source] = command
+        if command.source.repository == "missing/model":
+            raise ServingEngineFailure(
+                "SERVING_MODEL_SOURCE_UNAVAILABLE: the pinned source cannot be read",
+                status=503,
+                retryable=True,
+            )
+        return ModelImportResult(
+            model_artifact=ArtifactRef(
+                uri=f"artifact://sha256/{'c' * 64}",
+                digest=f"sha256:{'c' * 64}",
+                size_bytes=1,
+                kind="model",
+            ),
+            validation=ModelImportValidation(
+                weights=True,
+                config=True,
+                tokenizer=True,
+                chat_template=True,
+                license="Apache-2.0",
+                provenance=source,
+                digest=f"sha256:{'d' * 64}",
+            ),
+        )
 
     def prepare(self, deployment_id: UUID) -> EngineHandle:
         return EngineHandle(
@@ -249,5 +287,56 @@ def test_legacy_execution_reference_is_migrated_out_of_product_json(tmp_path: Pa
             deployment = client.get(f"/api/v1/deployments/{deployment_id}").json()
         assert "engineExecutionRef" not in deployment
         assert app.state.reactor_store.get_execution_ref(UUID(deployment_id)) == "process:1234"
+    finally:
+        app.state.reactor_store.close()
+
+
+def test_deployment_events_record_phase_transitions(tmp_path: Path) -> None:
+    engine = _TestServingExecutionPort()
+    app = create_app(database_path=tmp_path / "reactor.sqlite3", engine=engine)
+    try:
+        with TestClient(app) as client:
+            created = client.post(
+                "/api/v1/deployments",
+                json={
+                    "name": "phase-test",
+                    "modelArtifact": _model(),
+                    "servingBindingId": "local-process-serving",
+                },
+            )
+            assert created.status_code == 201, created.text
+            deployment_id = created.json()["id"]
+
+            res = client.get(f"/api/v1/deployments/{deployment_id}/events")
+            assert res.status_code == 200, res.text
+            data = res.json()
+            assert data["deploymentId"] == deployment_id
+            events = data["events"]
+            # At least 3 phase transitions recorded
+            # 中文:至少记录 3 次阶段转换。
+            assert len(events) >= 3
+            phases = [e["phase"] for e in events]
+            assert "QUEUED" in phases
+            assert "LOADING" in phases
+            assert "PROBING" in phases
+            assert "READY" in phases
+            assert [e["sequence"] for e in events] == list(range(1, len(events) + 1))
+
+            # Stop deployment and check STOPPING and RELEASED events
+            # 中文:停止 Deployment,并检查 STOPPING 与 RELEASED 事件。
+            client.post(f"/api/v1/deployments/{deployment_id}/actions/stop")
+            res_after_stop = client.get(f"/api/v1/deployments/{deployment_id}/events")
+            assert res_after_stop.status_code == 200
+            events_stop = res_after_stop.json()["events"]
+            assert len(events_stop) >= 5
+            phases_stop = [e["phase"] for e in events_stop]
+            assert "STOPPING" in phases_stop
+            assert "RELEASED" in phases_stop
+
+            # 404 for non-existent deployment
+            # 中文:不存在的 Deployment 返回 404。
+            missing = client.get(f"/api/v1/deployments/{uuid4()}/events")
+            assert missing.status_code == 404
+            assert missing.json()["code"] == "REACTOR_DEPLOYMENT_NOT_FOUND"
     finally:
         app.state.reactor_store.close()

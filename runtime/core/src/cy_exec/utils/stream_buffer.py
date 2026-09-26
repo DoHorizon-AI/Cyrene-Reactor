@@ -71,7 +71,9 @@ class StreamBuffer(Generic[T]):
 			return True
 
 	def pop(self, *, block: bool = True, timeout: Optional[float] = None) -> T:
-		"""Remove and return the next item, blocking if configured."""
+		"""Remove and return the next item, blocking if configured.
+
+         中文:移除并返回下一项;若配置要求则阻塞等待。"""
 
 		with self._cond:
 			# 等待直到有可用元素或超时/已关闭
@@ -135,7 +137,9 @@ class StreamBuffer(Generic[T]):
 		return self._closed
 
 	def extend(self, items: Iterable[T], *, block: bool = True) -> int:
-		"""Push multiple items, returning how many were accepted."""
+		"""Push multiple items, returning how many were accepted.
+
+         中文:推入多项数据,并返回已接受的数量。"""
 
 		accepted = 0
 		for item in items:

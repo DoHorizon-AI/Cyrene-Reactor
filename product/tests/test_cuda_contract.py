@@ -29,7 +29,9 @@ from cyrene_reactor_product.remote_engine import (
 
 
 def package(root: Path) -> Path:
-    """Create an opaque Product test artifact without interpreting model contents."""
+    """Create an opaque Product test artifact without interpreting model contents.
+
+    中文:创建不解析模型内容的不透明 Product 测试 Artifact。"""
     root.mkdir()
     (root / "artifact.bin").write_bytes(b"opaque-model-package")
     return root

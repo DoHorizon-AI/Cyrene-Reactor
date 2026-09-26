@@ -20,22 +20,24 @@ Reactor's Apache metadata.
 [`Cargo.lock`](Cargo.lock) 是完整解析图的可复现记录。不要根据 Reactor 的 Apache 元数据
 推断依赖的许可证。
 
-Two release gates are currently explicit:
+One release gate is currently explicit:
 
-当前有两个明确的发布门禁：
+当前有一个明确的发布门禁：
 
 1. The pinned Plugins runtime has no license field in its upstream package
    metadata. It must receive explicit license metadata and remain cloneable at
    the pinned immutable revision before the public dependency closure is
    complete.
-2. The Platform `cy-adapter-client` dependency is `AGPL-3.0-only`; binary
-   distribution requires legal review and the applicable source and notice
-   obligations.
 
 1. 锁定的 Plugins runtime 上游包元数据没有 license 字段。在公开依赖闭包完成前，必须
    补充明确许可证元数据，并确保锁定的不可变 revision 可被克隆。
-2. Platform 的 `cy-adapter-client` 依赖为 `AGPL-3.0-only`；分发二进制前需要法律审查，
-   并履行适用的源码与声明义务。
+
+The host-placement binary no longer links `cy-adapter-client`; CI rejects any
+attempt to reintroduce that dependency. Its remaining Platform contract and
+placement dependencies declare Apache-2.0.
+
+host-placement 二进制已不再链接 `cy-adapter-client`；CI 会拒绝重新引入该依赖。其余
+Platform contract 与 placement 依赖均声明为 Apache-2.0。
 
 The repository does not bundle vLLM, KServe, model weights, datasets, or
 deployment credentials. Those are replaceable/future integration targets and

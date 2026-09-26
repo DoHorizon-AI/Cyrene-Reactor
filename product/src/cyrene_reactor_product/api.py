@@ -11,7 +11,6 @@
 from __future__ import annotations
 
 import hashlib
-import re
 import secrets
 from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
@@ -20,7 +19,7 @@ from uuid import UUID, uuid4
 
 import anyio
 import httpx
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi import Path as ApiPath
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response, StreamingResponse
@@ -28,12 +27,15 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from cyrene_reactor_product.domain import (
     CreateDeploymentDraft,
     CreateDeploymentRequest,
+    CreateModelImportRequest,
     DeployDraftRequest,
     Deployment,
     DeploymentDraft,
+    DeploymentEventsResponse,
+    DiagnosticsPage,
     Endpoint,
     ModelComposition,
-    ModelImportRequest,
+    ModelImport,
     ProblemDetails,
     ProductResourceRef,
     RestartRequest,
@@ -41,20 +43,21 @@ from cyrene_reactor_product.domain import (
     utc_now,
 )
 from cyrene_reactor_product.engine import ServingExecutionPort, UnconfiguredServingExecutionPort
-from cyrene_reactor_product.errors import ReactorProductError, ServingEngineFailure
+from cyrene_reactor_product.errors import (
+    ReactorProductError,
+    ServingEngineFailure,
+    map_reactor_error,
+)
 from cyrene_reactor_product.exchange_handoff import ExchangeHandoff
+from cyrene_reactor_product.logging import (
+    bind_diagnostic_trace,
+    emit_diagnostic_error,
+    parse_w3c_traceparent,
+    sanitize_request_id,
+)
 from cyrene_reactor_product.remote_engine import RemoteServingExecutionPort
 from cyrene_reactor_product.service import ReactorService
 from cyrene_reactor_product.store import ReactorStore
-
-_TRACEPARENT = re.compile(r"^00-([0-9a-f]{32})-([0-9a-f]{16})-[0-9a-f]{2}$")
-
-
-def _incoming_trace_id(value: str) -> str | None:
-    match = _TRACEPARENT.fullmatch(value)
-    if match is None or match.group(1) == "0" * 32 or match.group(2) == "0" * 16:
-        return None
-    return match.group(1)
 
 
 def create_app(
@@ -75,6 +78,8 @@ def create_app(
         raise ValueError("REACTOR_CREDENTIAL_INVALID")
 
     def authorize(request: Request) -> None:
+        if request.url.path in {"/healthz", "/readyz", "/"}:
+            return
         if token is not None and not secrets.compare_digest(
             request.headers.get("authorization", ""), "Bearer " + token
         ):
@@ -83,6 +88,13 @@ def create_app(
     app = FastAPI(
         title="Cyrene Reactor Product API", version="1.0.0", dependencies=[Depends(authorize)]
     )
+
+    @app.get("/healthz", include_in_schema=False)
+    @app.get("/readyz", include_in_schema=False)
+    @app.get("/", include_in_schema=False)
+    def health_check() -> dict[str, str]:
+        return {"status": "UP", "service": "cyrene-reactor"}
+
     app.state.reactor_store = store
     app.state.reactor_engine = serving_engine
     app.state.reactor_service = service
@@ -91,16 +103,43 @@ def create_app(
     async def propagate_trace(
         request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
-        trace_id = _incoming_trace_id(request.headers.get("traceparent", "")) or uuid4().hex
+        parsed_trace = parse_w3c_traceparent(request.headers.get("traceparent"))
+        trace_id = parsed_trace[0] if parsed_trace else uuid4().hex
+        parent_span_id = parsed_trace[1] if parsed_trace else "0000000000000001"
+        request_id = sanitize_request_id(request.headers.get("x-request-id")) or uuid4().hex
+
         request.state.trace_id = trace_id
+        request.state.span_id = parent_span_id
+        request.state.request_id = request_id
+
         response = await call_next(request)
         response.headers["traceparent"] = f"00-{trace_id}-0000000000000001-01"
+        response.headers["x-request-id"] = request_id
         return response
 
     @app.exception_handler(ReactorProductError)
     async def product_error(request: Request, exc: ReactorProductError) -> JSONResponse:
+        mapped = map_reactor_error(exc.code)
+        canonical_code = mapped["code"]
+        recovery_action = mapped.get("recovery_action")
+
+        emit_diagnostic_error(
+            "product.reactor.error",
+            canonical_code,
+            exc.detail,
+            trace_id=getattr(request.state, "trace_id", None),
+            span_id=getattr(request.state, "span_id", None),
+            attributes={
+                "request_id": getattr(request.state, "request_id", None),
+                "cause_kind": mapped.get("cause_kind"),
+                "status": exc.status,
+                "path": request.url.path,
+                "legacy_code": exc.code,
+            },
+        )
+
         problem = ProblemDetails(
-            type=f"https://errors.cyrene.dev/reactor/{exc.code.lower()}",
+            type=f"https://errors.cyrene.dev/reactor/{canonical_code.lower()}",
             title=exc.title,
             status=exc.status,
             detail=exc.detail,
@@ -109,6 +148,8 @@ def create_app(
             retryable=exc.retryable,
             trace_id=request.state.trace_id,
             resource_ref=exc.resource_ref,
+            request_id=getattr(request.state, "request_id", None),
+            recovery_action=recovery_action,
         )
         return JSONResponse(
             status_code=exc.status,
@@ -133,8 +174,26 @@ def create_app(
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(request: Request, _exc: RequestValidationError) -> JSONResponse:
+        mapped = map_reactor_error("REACTOR_REQUEST_INVALID")
+        canonical_code = mapped["code"]
+        recovery_action = mapped.get("recovery_action")
+
+        emit_diagnostic_error(
+            "product.reactor.validation_error",
+            canonical_code,
+            "The request does not conform to the Reactor Product API v1 contract.",
+            trace_id=getattr(request.state, "trace_id", None),
+            span_id=getattr(request.state, "span_id", None),
+            attributes={
+                "request_id": getattr(request.state, "request_id", None),
+                "cause_kind": mapped.get("cause_kind"),
+                "status": 422,
+                "path": request.url.path,
+            },
+        )
+
         problem = ProblemDetails(
-            type="https://errors.cyrene.dev/reactor/request-invalid",
+            type=f"https://errors.cyrene.dev/reactor/{canonical_code.lower()}",
             title="Request validation failed",
             status=422,
             detail="The request does not conform to the Reactor Product API v1 contract.",
@@ -142,6 +201,8 @@ def create_app(
             code="REACTOR_REQUEST_INVALID",
             retryable=False,
             trace_id=request.state.trace_id,
+            request_id=getattr(request.state, "request_id", None),
+            recovery_action=recovery_action,
         )
         return JSONResponse(
             status_code=422,
@@ -244,6 +305,32 @@ def create_app(
     ) -> Deployment:
         return service.get_deployment(deployment_id)
 
+    @app.get(
+        "/api/v1/deployments/{deploymentId}/events",
+        response_model=DeploymentEventsResponse,
+        response_model_exclude_none=True,
+    )
+    def deployment_events(
+        deployment_id: Annotated[UUID, ApiPath(alias="deploymentId")],
+    ) -> DeploymentEventsResponse:
+        return service.deployment_events(deployment_id)
+
+    @app.get(
+        "/api/v1/deployments/{deploymentId}/diagnostics",
+        response_model=DiagnosticsPage,
+        response_model_exclude_none=True,
+    )
+    def deployment_diagnostics(
+        request: Request,
+        deployment_id: Annotated[UUID, ApiPath(alias="deploymentId")],
+        after_sequence: int = Query(default=0, ge=0, alias="afterSequence"),
+        limit: int = Query(default=200, ge=1, le=500),
+    ) -> DiagnosticsPage:
+        with bind_diagnostic_trace(request.state.trace_id, request.state.span_id):
+            return service.deployment_diagnostics(
+                deployment_id, after_sequence=after_sequence, limit=limit
+            )
+
     @app.post(
         "/api/v1/deployments/{deploymentId}/actions/stop",
         response_model=Deployment,
@@ -296,6 +383,36 @@ def create_app(
     )
     def list_deployments() -> list[Deployment]:
         return store.list_deployments()
+
+    @app.post(
+        "/api/v1/model-imports",
+        response_model=ModelImport,
+        response_model_exclude_none=True,
+        status_code=201,
+    )
+    def create_model_import(
+        command: CreateModelImportRequest,
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", max_length=200),
+    ) -> ModelImport:
+        return service.create_model_import(command, idempotency_key)
+
+    @app.get(
+        "/api/v1/model-imports",
+        response_model=list[ModelImport],
+        response_model_exclude_none=True,
+    )
+    def list_model_imports() -> list[ModelImport]:
+        return service.list_model_imports()
+
+    @app.get(
+        "/api/v1/model-imports/{importId}",
+        response_model=ModelImport,
+        response_model_exclude_none=True,
+    )
+    def get_model_import(
+        import_id: Annotated[UUID, ApiPath(alias="importId")],
+    ) -> ModelImport:
+        return service.get_model_import(import_id)
 
     @app.get("/api/v1/deployments/{deploymentId}/export")
     def export_deployment(
@@ -402,9 +519,5 @@ def create_app(
     @app.get("/api/v1/serving-bindings/{binding_id}/node")
     def node(binding_id: str) -> dict[str, object]:
         return remote(binding_id).request("GET", "/node")
-
-    @app.post("/api/v1/serving-bindings/{binding_id}/model-imports", status_code=201)
-    def import_model(binding_id: str, command: ModelImportRequest) -> dict[str, object]:
-        return remote(binding_id).request("POST", "/imports", command.model_dump())
 
     return app

@@ -32,10 +32,12 @@ from .path_utils import (
 
 __all__ = [
     # auth
+    # 中文:认证
     "verify_token",
     "verify_grpc_context",
     "verify_grpc_context_async",
     # path_utils
+    # 中文:路径工具
     "PathTraversalError",
     "safe_join",
     "validate_model_path",

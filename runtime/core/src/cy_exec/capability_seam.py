@@ -1,4 +1,6 @@
-"""Product-to-Plugin seam for the execution-engine capability."""
+"""Product-to-Plugin seam for the execution-engine capability.
+
+中文:Product 到 Plugin 的执行引擎能力接口。"""
 
 from __future__ import annotations
 
@@ -38,13 +40,17 @@ def _execution_engine_type_url(method: str, direction: str) -> str:
 
 
 class ServingProfile(str, Enum):
-    """Operating profile for serving engine capability binding."""
+    """Operating profile for serving engine capability binding.
+
+        中文:服务引擎能力绑定的运行配置。"""
 
     DIRECT_PLUGIN = "DIRECT_PLUGIN"
 
 
 class ServingPortFailure(RuntimeError):
-    """Stable Product failure raised when serving port binding fails or engine is unavailable."""
+    """Stable Product failure raised when serving port binding fails or engine is unavailable.
+
+        中文:服务端口绑定失败或引擎不可用时抛出的稳定 Product 错误。"""
 
     def __init__(self, message: str, *, status: int = 503, retryable: bool = False) -> None:
         super().__init__(message)
@@ -64,7 +70,9 @@ EXECUTION_ENGINE_REQUIREMENT = ExecutionEngineRequirement()
 
 @dataclass(frozen=True)
 class ExecutionEngineBinding:
-    """Binding configuration for serving engine capability."""
+    """Binding configuration for serving engine capability.
+
+        中文:服务引擎能力的绑定配置。"""
 
     profile: ServingProfile = ServingProfile.DIRECT_PLUGIN
     capability: str = EXECUTION_ENGINE_CAPABILITY
@@ -74,7 +82,9 @@ class ExecutionEngineBinding:
 
 
 class ExecutionEnginePort(Protocol):
-    """Product serving port defining the contract consumed by Reactor."""
+    """Product serving port defining the contract consumed by Reactor.
+
+        中文:定义 Reactor 所消费契约的 Product 服务端口。"""
 
     def load_model(self, model_path: str, **kwargs: Any) -> None: ...
 
@@ -90,7 +100,9 @@ class ExecutionEngineProvider(Protocol):
 
 
 class ExecutionEnginePluginResolver(Protocol):
-    """Resolve one Plugins-owned engine contract without proxying through Platform."""
+    """Resolve one Plugins-owned engine contract without proxying through Platform.
+
+        中文:解析一个由 Plugins 所有的引擎契约,不经 Platform 代理。"""
 
     def resolve(self, requirement: ExecutionEngineRequirement) -> ExecutionEngineProvider: ...
 
@@ -236,6 +248,10 @@ class DirectPluginExecutionEngineAdapter(BaseEngine):
 
         The response type URL is checked before decoding so a corrupted or
         cross-capability payload cannot enter Product state.
+
+            中文:调用一个规范方法并验证其有类型的 JSON 响应。
+
+                中文:解码前会先检查响应类型 URL,防止损坏或跨能力载荷进入 Product 状态。
         """
 
         request_type_url = _execution_engine_type_url(method, "request")
@@ -417,7 +433,9 @@ class DirectPluginExecutionEngineAdapter(BaseEngine):
 
 
 class DirectPluginEngineProvider:
-    """Provider returning DirectPluginExecutionEngineAdapter instances."""
+    """Provider returning DirectPluginExecutionEngineAdapter instances.
+
+        中文:返回 DirectPluginExecutionEngineAdapter 实例的提供方。"""
 
     def __init__(self, binding: ExecutionEngineBinding, client: Any | None = None) -> None:
         self.binding = binding
@@ -447,7 +465,9 @@ class DirectPluginEngineProvider:
 
 
 class ConfiguredExecutionEngineResolver:
-    """Resolve the Plugins-owned execution engine with fail-closed semantics."""
+    """Resolve the Plugins-owned execution engine with fail-closed semantics.
+
+        中文:以失败即拒绝语义解析由 Plugins 所有的执行引擎。"""
 
     def __init__(
         self,
@@ -481,7 +501,9 @@ class ConfiguredExecutionEngineResolver:
 
 
 class ExecutionEngineCapabilityFactory:
-    """Create a Product adapter for the explicitly bound Plugin provider."""
+    """Create a Product adapter for the explicitly bound Plugin provider.
+
+        中文:为明确绑定的 Plugin 提供方创建 Product 适配器。"""
 
     def __init__(self, resolver: ExecutionEnginePluginResolver) -> None:
         self._resolver = resolver
@@ -492,7 +514,9 @@ class ExecutionEngineCapabilityFactory:
 
 
 def resolve_execution_engine_resolver() -> ExecutionEnginePluginResolver:
-    """Resolve the execution engine resolver from environment configuration."""
+    """Resolve the execution engine resolver from environment configuration.
+
+        中文:根据环境配置解析执行引擎解析器。"""
     profile_str = os.environ.get("CYRENE_SERVING_PROFILE", "").strip().upper()
     connection_ref = os.environ.get("CYRENE_SERVING_CONNECTION_REF")
     provider_id = os.environ.get("CYRENE_SERVING_PROVIDER_ID")

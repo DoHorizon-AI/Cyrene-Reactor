@@ -47,3 +47,39 @@ Do not add training, evaluation, public gateway authentication, or canonical nod
 Treat MCP as transport. Reuse serving admission, timeout, cancellation, health, capability resolution, and secret-redaction policies; never expose arbitrary process, filesystem, or engine-internal controls.
 
 将 MCP 视为传输层。复用服务准入、超时、取消、健康、能力解析与密钥脱敏策略；绝不暴露任意进程、文件系统或引擎内部控制。
+---
+<!-- Chinese Translation / 中文翻译 -->
+
+# 常见问题与排障
+
+## 哪个运行时是规范实现？
+
+`runtime/core/src/cy_exec` 是规范的社区推理运行时。`runtime/pro` 是可选扩展，必须显式安装；Rust 组件提供原生集成。
+
+## 为什么不编辑部分协议文件？
+
+`runtime/core/src/cy_exec/proto` 下的文件是生成绑定。应修改源契约并通过仓库工具重新生成；在仅补注释的任务中不要手工编辑生成输出。
+
+## 服务生命周期是什么？
+
+按 `CREATED → CONFIGURED → LOADING → READY → SERVING → DRAINING → STOPPED` 流转。加载失败时必须释放引擎资源；就绪状态无法确认时必须拒绝流量；排空时必须拒绝新任务。
+
+## 谁负责硬件事实和内存策略？
+
+Platform Node Agent 负责规范硬件事实，Platform 负责通用资源 lease。Reactor 负责服务准入、有界排队、已加载模型标识和显式卸载策略。它可以汇总选定 Plugin 上报的观测，但不会自行探测硬件或释放设备内存。引擎 Plugin 负责具体 KV 分配和内存池行为；Gateway cache Plugin 负责 prompt/response 缓存。
+
+## 为什么 CPU 环境能导入，但不能推理？
+
+GPU/NPU 可选依赖被有意设计为延迟加载。导入和编译检查可以在没有加速器时运行；但实际执行时，选定引擎仍需要对应运行时、设备、模型和兼容驱动依赖。
+
+## 如何分层定位服务故障？
+
+按顺序检查：配置验证、模型 Artifact 可用性、引擎选择、权重加载、就绪状态、队列准入、引擎执行、流传输和资源清理。提供方、调度器和生命周期错误应分别处理。
+
+## Reactor 不应加入什么？
+
+不要加入训练、评估、公共网关认证或规范节点硬件探测。这些职责分别属于 Yield、Echo、Exchange 和 Platform Node Agent。
+
+## 如何评审 MCP 适配器？
+
+将 MCP 视为传输层。复用服务准入、超时、取消、健康检查、能力解析和密钥脱敏策略；不要暴露任意进程、文件系统或引擎内部控制。

@@ -134,6 +134,7 @@ class AsyncAiInferenceServicer(AiInferenceServicer):
                 generation_kwargs["repetition_penalty"] = gen_params.repetition_penalty
 
         # OpenTelemetry span
+        # 中文:OpenTelemetry span 追踪跨度。
         span = None
         if OTEL_AVAILABLE and hasattr(self, '_tracer') and self._tracer:
             span = self._tracer.start_as_current_span("StreamPredict")
@@ -180,6 +181,7 @@ class AsyncAiInferenceServicer(AiInferenceServicer):
                     generation_kwargs=generation_kwargs or None,
                     engine_kwargs=engine_kwargs or None,
                     priority=priority,
+                    trace_id=trace_id,
                 ):
                     if chunk_index == 0:
                         first_token_time = time.perf_counter()
@@ -202,6 +204,7 @@ class AsyncAiInferenceServicer(AiInferenceServicer):
                     generation_kwargs=generation_kwargs or None,
                     engine_kwargs=engine_kwargs or None,
                     priority=priority,
+                    trace_id=trace_id,
                 )
 
                 # 将同步生成器转换为异步

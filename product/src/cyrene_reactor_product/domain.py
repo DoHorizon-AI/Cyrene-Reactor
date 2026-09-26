@@ -13,6 +13,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from enum import StrEnum
+from pathlib import Path
 from typing import Any, Literal
 from uuid import UUID
 
@@ -35,6 +36,11 @@ def canonical_model_version(value: Mapping[str, Any]) -> ModelVersionDocument:
 
     Reactor stores the canonical Yield document as opaque Product state. It
     deliberately does not reimplement ModelVersion identity or lineage rules.
+
+        中文:通过 Yield ModelVersion SDK 验证,并返回其 wire 格式。
+
+            中文：Reactor 将 Yield 规范文档作为不透明的 Product 状态保存,
+            不会重新实现 ModelVersion 标识或血缘规则。
     """
 
     try:
@@ -53,7 +59,9 @@ def canonical_model_version(value: Mapping[str, Any]) -> ModelVersionDocument:
 
 
 def model_version_artifact(document: Mapping[str, Any]) -> ArtifactRef:
-    """Return the serving ArtifactRef projection for a canonical version."""
+    """Return the serving ArtifactRef projection for a canonical version.
+
+    中文:返回规范版本对应的服务 ArtifactRef 投影。"""
 
     composition = document.get("composition")
     if composition == "FULL_MODEL":
@@ -95,6 +103,70 @@ class ObservedState(StrEnum):
     FAILED = "FAILED"
     STOPPING = "STOPPING"
     STOPPED = "STOPPED"
+
+
+class DeploymentPhase(StrEnum):
+    """Granular phase in Deployment execution timeline. | 部署执行阶段。"""
+
+    QUEUED = "QUEUED"
+    IMPORTING = "IMPORTING"
+    LOADING = "LOADING"
+    PROBING = "PROBING"
+    READY = "READY"
+    STOPPING = "STOPPING"
+    RELEASED = "RELEASED"
+    FAILED = "FAILED"
+
+
+class DeploymentEvent(ContractModel):
+    """Timestamped phase event for a deployment. | 部署阶段事件。"""
+
+    sequence: int = Field(ge=1)
+    phase: DeploymentPhase
+    message: str
+    occurred_at: datetime
+    failure_code: str | None = None
+
+
+class DeploymentEventsResponse(ContractModel):
+    """Historical list of phase events for a deployment. | 部署阶段事件列表。"""
+
+    deployment_id: UUID
+    events: list[DeploymentEvent]
+
+
+DiagnosticSource = Literal["product", "trainer", "runtime", "platform"]
+DiagnosticStream = Literal["stdout", "stderr", "combined"]
+DiagnosticLevel = Literal["debug", "info", "warn", "error"]
+
+
+class DiagnosticRecord(ContractModel):
+    """One redacted diagnostic line a console may show verbatim.
+
+    中文:控制台可以原样展示的一条脱敏诊断记录。"""
+
+    sequence: int = Field(ge=1)
+    timestamp: str
+    level: DiagnosticLevel = "info"
+    source: DiagnosticSource = "product"
+    stream: DiagnosticStream = "combined"
+    code: str | None = Field(default=None, max_length=200)
+    message: str = Field(default="", max_length=8192)
+    request_id: str | None = Field(default=None, max_length=200)
+    operation_id: str | None = Field(default=None, max_length=200)
+    resource_id: str | None = Field(default=None, max_length=200)
+    attempt_id: str | None = Field(default=None, max_length=200)
+    truncated: bool = False
+
+
+class DiagnosticsPage(ContractModel):
+    """One page of diagnostics for a single Deployment. | 部署诊断分页。"""
+
+    resource_id: str
+    items: list[DiagnosticRecord] = Field(default_factory=list)
+    next_sequence: int = Field(ge=0)
+    terminal: bool = False
+    diagnostics_degraded: bool = False
 
 
 class ModelComposition(StrEnum):
@@ -166,11 +238,103 @@ class RestartRequest(ContractModel):
     resource_version: int = Field(gt=0)
 
 
-class ModelImportRequest(ContractModel):
+class ModelImportSourceKind(StrEnum):
+    """Admitted external model source kinds. | 允许的外部模型来源类型。"""
+
+    HUGGING_FACE = "HUGGING_FACE"
+    LOCAL_PATH = "LOCAL_PATH"
+
+
+class ModelImportSource(ContractModel):
     """Immutable external model source, independent of producer Product. | 外部模型来源。"""
 
-    repository: str
-    revision: str
+    kind: ModelImportSourceKind
+    repository: str | None = Field(default=None, min_length=1, max_length=300)
+    revision: str | None = Field(default=None, pattern=r"^[0-9a-f]{40}$")
+    path: str | None = Field(default=None, min_length=1, max_length=4096)
+
+    @model_validator(mode="after")
+    def validate_source(self) -> ModelImportSource:
+        if self.kind == ModelImportSourceKind.HUGGING_FACE:
+            if not self.repository or "/" not in self.repository:
+                raise ValueError("MODEL_IMPORT_SOURCE_INVALID: repository must be owner/name")
+            if self.revision is None:
+                raise ValueError(
+                    "MODEL_IMPORT_SOURCE_INVALID: a pinned 40-hex revision is required"
+                )
+            if self.path is not None:
+                raise ValueError(
+                    "MODEL_IMPORT_SOURCE_INVALID: a Hugging Face source cannot have a path"
+                )
+            return self
+        if not self.path or not self.path.startswith("/"):
+            raise ValueError(
+                "MODEL_IMPORT_SOURCE_INVALID: a local import requires an absolute path"
+            )
+        segments = Path(self.path).parts
+        if ".." in segments:
+            raise ValueError("MODEL_IMPORT_SOURCE_INVALID: path traversal is not admitted")
+        if self.repository is not None or self.revision is not None:
+            raise ValueError("MODEL_IMPORT_SOURCE_INVALID: a local source cannot have a repository")
+        return self
+
+
+class ModelImportState(StrEnum):
+    """Reactor-owned ModelImport lifecycle. | 模型导入生命周期。"""
+
+    VALIDATING = "VALIDATING"
+    READY = "READY"
+    FAILED = "FAILED"
+
+
+class ModelImportValidation(ContractModel):
+    """Validation evidence returned by the serving binding. | 服务绑定返回的校验证据。"""
+
+    weights: bool
+    config: bool
+    tokenizer: bool
+    chat_template: bool
+    license: str | None = Field(default=None, exclude_if=lambda value: value is None)
+    provenance: str = Field(min_length=1)
+    digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    trust_remote_code: Literal[False] = False
+    issues: list[str] = Field(default_factory=list)
+
+
+class ModelImportResult(ContractModel):
+    """Validated model artifact published by the binding. | 绑定发布的已校验模型制品。"""
+
+    model_artifact: ArtifactRef
+    validation: ModelImportValidation
+
+
+class ModelImport(ContractModel):
+    """Persisted import independent of any Deployment. | 独立于 Deployment 的持久化导入。"""
+
+    id: UUID
+    name: str = Field(min_length=1, max_length=200)
+    serving_binding_id: str = Field(min_length=1, max_length=200)
+    source: ModelImportSource
+    credential_ref: str | None = Field(
+        default=None, min_length=1, max_length=300, exclude_if=lambda value: value is None
+    )
+    state: ModelImportState
+    model_artifact: ArtifactRef | None = None
+    validation: ModelImportValidation | None = None
+    failure: ProductFailure | None = None
+    created_at: datetime
+    updated_at: datetime
+    resource_version: int = Field(ge=1)
+
+
+class CreateModelImportRequest(ContractModel):
+    """Create-ModelImport command. | 创建模型导入请求。"""
+
+    name: str = Field(min_length=1, max_length=200)
+    serving_binding_id: str = Field(min_length=1, max_length=200)
+    source: ModelImportSource
+    credential_ref: str | None = Field(default=None, min_length=1, max_length=300)
+    trust_remote_code: bool = False
 
 
 class Deployment(ContractModel):
@@ -249,6 +413,8 @@ class CreateDeploymentRequest(ContractModel):
         # The default FULL_MODEL keeps old request bodies valid. A supplied
         # composed ModelVersion is the only authority when that default is
         # present; an explicit composed composition must still agree.
+        # 中文:默认 FULL_MODEL 可继续接受旧版请求体。当请求提供组合 ModelVersion 时,它是唯一权威;
+        # 若显式指定了组合类型,其值仍必须一致。
         if (
             self.composition == ModelComposition.FULL_MODEL
             and version_composition == ModelComposition.BASE_PLUS_LORA
@@ -343,3 +509,5 @@ class ProblemDetails(ContractModel):
     retryable: bool
     trace_id: str
     resource_ref: str | None = None
+    request_id: str | None = None
+    recovery_action: str | None = None
