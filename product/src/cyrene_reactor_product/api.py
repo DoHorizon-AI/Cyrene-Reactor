@@ -50,6 +50,7 @@ from cyrene_reactor_product.errors import (
 )
 from cyrene_reactor_product.exchange_handoff import ExchangeHandoff
 from cyrene_reactor_product.logging import (
+    bind_diagnostic_trace,
     emit_diagnostic_error,
     parse_w3c_traceparent,
     sanitize_request_id,
@@ -320,13 +321,15 @@ def create_app(
         response_model_exclude_none=True,
     )
     def deployment_diagnostics(
+        request: Request,
         deployment_id: Annotated[UUID, ApiPath(alias="deploymentId")],
         after_sequence: int = Query(default=0, ge=0, alias="afterSequence"),
         limit: int = Query(default=200, ge=1, le=500),
     ) -> DiagnosticsPage:
-        return service.deployment_diagnostics(
-            deployment_id, after_sequence=after_sequence, limit=limit
-        )
+        with bind_diagnostic_trace(request.state.trace_id, request.state.span_id):
+            return service.deployment_diagnostics(
+                deployment_id, after_sequence=after_sequence, limit=limit
+            )
 
     @app.post(
         "/api/v1/deployments/{deploymentId}/actions/stop",

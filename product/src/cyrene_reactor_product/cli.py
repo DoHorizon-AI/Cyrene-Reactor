@@ -141,8 +141,10 @@ def main() -> None:
         "true",
         "yes",
     } or os.environ.get("REACTOR_ALLOW_INSECURE", "").lower() in {"1", "true", "yes"}
-    if not allow_insecure and args.host not in {"127.0.0.1", "localhost", "::1"} and not (
-        args.tls_certificate and args.tls_key
+    if (
+        not allow_insecure
+        and args.host not in {"127.0.0.1", "localhost", "::1"}
+        and not (args.tls_certificate and args.tls_key)
     ):
         raise SystemExit("Remote listeners require TLS; a loopback SSH tunnel is also supported")
     engines = _engines(configuration)

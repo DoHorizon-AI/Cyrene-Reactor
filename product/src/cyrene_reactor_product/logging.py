@@ -13,7 +13,9 @@ from __future__ import annotations
 import json
 import re
 import sys
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
@@ -40,6 +42,26 @@ _SENSITIVE_KEY_SUBSTRINGS = (
 )
 
 _INSTANCE_ID = str(uuid4())
+_DIAGNOSTIC_TRACE: ContextVar[tuple[str, str] | None] = ContextVar(
+    "reactor_diagnostic_trace", default=None
+)
+
+
+@contextmanager
+def bind_diagnostic_trace(trace_id: str, span_id: str) -> Iterator[None]:
+    """Bind a request trace while synchronous Product ports collect diagnostics.
+
+    中文:在同步 Product 端口收集诊断信息时绑定请求追踪。"""
+    token = _DIAGNOSTIC_TRACE.set((trace_id, span_id))
+    try:
+        yield
+    finally:
+        _DIAGNOSTIC_TRACE.reset(token)
+
+
+def current_diagnostic_trace() -> tuple[str, str] | None:
+    """Return the trace of the current diagnostics request. | 返回当前诊断请求的追踪。"""
+    return _DIAGNOSTIC_TRACE.get()
 
 
 def is_sensitive_key(key: str) -> bool:
