@@ -62,6 +62,10 @@ from cyrene_reactor_product.workspace_auth import (
     WorkspaceServiceAuthenticator,
     WorkspaceServingBindingGrantSet,
 )
+from cyrene_reactor_product.workspace_projection import (
+    WorkspaceModelImportProjection,
+    project_workspace_model_import,
+)
 
 
 def create_app(
@@ -427,7 +431,7 @@ def create_app(
 
     @app.post(
         "/internal/workspace/v1/model-imports",
-        response_model=ModelImport,
+        response_model=WorkspaceModelImportProjection,
         response_model_exclude_none=True,
         status_code=201,
         include_in_schema=False,
@@ -436,22 +440,27 @@ def create_app(
         command: CreateModelImportRequest,
         request: Request,
         idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", max_length=200),
-    ) -> ModelImport:
-        return service.create_model_import(
-            command,
-            idempotency_key,
-            workspace_scope=request.state.workspace_scope,
+    ) -> WorkspaceModelImportProjection:
+        return project_workspace_model_import(
+            service.create_model_import(
+                command,
+                idempotency_key,
+                workspace_scope=request.state.workspace_scope,
+            )
         )
 
     @app.get(
         "/internal/workspace/v1/model-imports",
-        response_model=list[ModelImport],
+        response_model=list[WorkspaceModelImportProjection],
         response_model_exclude_none=True,
         include_in_schema=False,
     )
-    def workspace_list_model_imports(request: Request) -> list[ModelImport]:
+    def workspace_list_model_imports(request: Request) -> list[WorkspaceModelImportProjection]:
         scope = request.state.workspace_scope
-        return service.list_model_imports_for_workspace(scope)
+        return [
+            project_workspace_model_import(item)
+            for item in service.list_model_imports_for_workspace(scope)
+        ]
 
     def create_model_import_resource(
         command: CreateModelImportRequest,

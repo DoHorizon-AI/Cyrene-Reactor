@@ -21,7 +21,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: ./openapi.yaml#/components/schemas/ModelImport
+                  $ref: '#/components/schemas/WorkspaceModelImportProjection'
         '401':
           description: Workspace service bearer is missing or invalid
         '503':
@@ -46,7 +46,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: ./openapi.yaml#/components/schemas/ModelImport
+                $ref: '#/components/schemas/WorkspaceModelImportProjection'
         '401':
           description: Workspace service bearer is missing or invalid
         '403':
@@ -63,3 +63,108 @@ components:
       type: http
       scheme: bearer
       description: Dedicated deployment secret scoped to these fixed Workspace routes.
+  schemas:
+    WorkspaceArtifactProjection:
+      type: object
+      additionalProperties: false
+      required: [digest, sizeBytes, kind]
+      properties:
+        digest:
+          type: string
+          pattern: '^sha256:[0-9a-f]{64}$'
+        sizeBytes:
+          type: integer
+          minimum: 0
+        kind:
+          type: string
+          enum: [generic, model, dataset, checkpoint, training_spec, metrics, merged, quantized, report]
+        manifestDigest:
+          type: string
+          pattern: '^sha256:[0-9a-f]{64}$'
+    WorkspaceModelImportSourceProjection:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          enum: [HUGGING_FACE, LOCAL_PATH]
+        revision:
+          type: string
+          pattern: '^[0-9a-f]{40}$'
+    WorkspaceModelImportValidationProjection:
+      type: object
+      additionalProperties: false
+      required: [weights, config, tokenizer, chatTemplate, digest, trustRemoteCode]
+      properties:
+        weights:
+          type: boolean
+        config:
+          type: boolean
+        tokenizer:
+          type: boolean
+        chatTemplate:
+          type: boolean
+        license:
+          type: string
+          pattern: '^[A-Za-z0-9.+-]{1,100}$'
+        digest:
+          type: string
+          pattern: '^sha256:[0-9a-f]{64}$'
+        trustRemoteCode:
+          type: boolean
+          const: false
+    WorkspaceModelImportFailureProjection:
+      type: object
+      additionalProperties: false
+      required: [code, retryable]
+      properties:
+        code:
+          type: string
+          pattern: '^[A-Z0-9_]{1,100}$'
+        retryable:
+          type: boolean
+    WorkspaceModelImportProjection:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - name
+        - servingBindingId
+        - source
+        - state
+        - createdAt
+        - updatedAt
+        - resourceVersion
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+          pattern: '^[^/\\:]{1,200}$'
+        servingBindingId:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9_.-]{0,199}$'
+        source:
+          $ref: '#/components/schemas/WorkspaceModelImportSourceProjection'
+        state:
+          type: string
+          enum: [VALIDATING, READY, FAILED]
+        modelArtifact:
+          $ref: '#/components/schemas/WorkspaceArtifactProjection'
+        validation:
+          $ref: '#/components/schemas/WorkspaceModelImportValidationProjection'
+        failure:
+          $ref: '#/components/schemas/WorkspaceModelImportFailureProjection'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        resourceVersion:
+          type: integer
+          minimum: 1
