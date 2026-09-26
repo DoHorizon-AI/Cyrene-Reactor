@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -30,6 +31,7 @@ from cyrene_reactor_product.domain import (
     model_version_artifact,
 )
 from cyrene_reactor_product.errors import ServingEngineFailure
+from cyrene_reactor_product.logging import current_diagnostic_trace, format_cyrene_log
 
 
 class ServingBindingConfiguration(BaseModel):
@@ -402,7 +404,19 @@ class RemoteServingExecutionPort:
                 f"/executions/{execution_ref}/diagnostics"
                 f"?afterSequence={int(after_sequence)}&limit={int(limit)}",
             )
-        except (ServingEngineFailure, ValueError):
+        except (ServingEngineFailure, ValueError) as exc:
+            trace = current_diagnostic_trace()
+            sys.stderr.write(
+                format_cyrene_log(
+                    level="WARN",
+                    event_name="reactor.runtime_diagnostics.binding_unavailable",
+                    message="Serving binding could not provide runtime diagnostics",
+                    trace_id=trace[0] if trace else None,
+                    span_id=trace[1] if trace else None,
+                    attributes={"cause_type": type(exc).__name__},
+                )
+                + "\n"
+            )
             return None
         return page if isinstance(page.get("items"), list) else None
 

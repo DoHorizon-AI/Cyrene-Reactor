@@ -4,10 +4,12 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 
 from cyrene_reactor_product.api import create_app
@@ -20,6 +22,7 @@ from cyrene_reactor_product.domain import (
     ModelImportValidation,
     NodeRef,
 )
+from cyrene_reactor_product.remote_engine import RemoteServingExecutionPort
 from cyrene_reactor_product.store import ReactorStore
 
 
@@ -109,6 +112,19 @@ class _LegacyPort(_DiagnosticsPort):
     中文:早于诊断契约的绑定:完全没有对应方法。"""
 
     diagnostics = None  # type: ignore[assignment]
+
+
+class _FailingDiagnosticsPort(_DiagnosticsPort):
+    """Route diagnostics through the real remote adapter with injected failure."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.reader = object.__new__(RemoteServingExecutionPort)
+
+    def diagnostics(
+        self, execution_ref: str, *, after_sequence: int = 0, limit: int = 200
+    ) -> dict[str, Any] | None:
+        return self.reader.diagnostics(execution_ref, after_sequence=after_sequence, limit=limit)
 
 
 def _model() -> dict[str, Any]:
@@ -243,6 +259,41 @@ def test_deployment_diagnostics_degrades_for_a_legacy_binding(tmp_path: Path) ->
         # Product records are still returned.
         # 中文:仍会返回 Product 记录。
         assert any(item["source"] == "product" for item in body["items"])
+    app.state.reactor_store.close()
+
+
+def test_remote_diagnostics_fault_keeps_request_trace(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fail_request(self: RemoteServingExecutionPort, method: str, path: str) -> dict[str, Any]:
+        del self, method, path
+        raise ValueError("injected diagnostics failure")
+
+    monkeypatch.setattr(RemoteServingExecutionPort, "request", fail_request)
+    app = create_app(database_path=tmp_path / "reactor.sqlite3", engine=_FailingDiagnosticsPort())
+    trace_id = "4bf92f3577b34da6a3ce929d0e0e4736"
+    span_id = "00f067aa0ba902b7"
+    with TestClient(app) as client:
+        deployment_id = client.post("/api/v1/deployments", json=_payload()).json()["id"]
+        response = client.get(
+            f"/api/v1/deployments/{deployment_id}/diagnostics",
+            headers={"traceparent": f"00-{trace_id}-{span_id}-01"},
+        )
+        assert response.status_code == 200
+        assert response.json()["diagnosticsDegraded"] is True
+    logs = [
+        json.loads(line) for line in capsys.readouterr().err.splitlines() if line.startswith("{")
+    ]
+    diagnostic = next(
+        record
+        for record in logs
+        if record.get("event.name") == "reactor.runtime_diagnostics.binding_unavailable"
+    )
+    assert diagnostic["trace_id"] == trace_id
+    assert diagnostic["span_id"] == span_id
+    assert diagnostic["attributes"]["cause_type"] == "ValueError"
     app.state.reactor_store.close()
 
 

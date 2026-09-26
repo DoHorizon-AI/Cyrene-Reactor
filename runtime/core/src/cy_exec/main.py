@@ -128,7 +128,8 @@ def setup_signal_handlers(stop_event: threading.Event) -> None:
 def graceful_shutdown(server, timeout: int = 5) -> None:
     try:
         server.stop(grace=timeout)
-    except Exception:
+    except Exception as exc:
+        LOGGER.warning("Failed to stop inference server during shutdown: %s", type(exc).__name__)
         return
 
 
