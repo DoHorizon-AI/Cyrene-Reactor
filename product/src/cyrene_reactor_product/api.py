@@ -77,6 +77,8 @@ def create_app(
         raise ValueError("REACTOR_CREDENTIAL_INVALID")
 
     def authorize(request: Request) -> None:
+        if request.url.path in {"/healthz", "/readyz", "/"}:
+            return
         if token is not None and not secrets.compare_digest(
             request.headers.get("authorization", ""), "Bearer " + token
         ):
@@ -85,6 +87,13 @@ def create_app(
     app = FastAPI(
         title="Cyrene Reactor Product API", version="1.0.0", dependencies=[Depends(authorize)]
     )
+
+    @app.get("/healthz", include_in_schema=False)
+    @app.get("/readyz", include_in_schema=False)
+    @app.get("/", include_in_schema=False)
+    def health_check() -> dict[str, str]:
+        return {"status": "UP", "service": "cyrene-reactor"}
+
     app.state.reactor_store = store
     app.state.reactor_engine = serving_engine
     app.state.reactor_service = service

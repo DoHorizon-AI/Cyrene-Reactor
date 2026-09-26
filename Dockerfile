@@ -96,6 +96,6 @@ USER cyrene
 EXPOSE 19300 8000
 
 HEALTHCHECK --interval=10s --timeout=5s --start-period=5s --retries=3 \
-  CMD sh -c 'TOKEN=$([ -f /data/credentials/control.token ] && cat /data/credentials/control.token || echo ""); curl -k -f -H "Authorization: Bearer $TOKEN" https://127.0.0.1:19300/api/v1/exchange-receivers || exit 1'
+  CMD curl -f http://127.0.0.1:19300/healthz || exit 1
 
 ENTRYPOINT ["docker-entrypoint.sh"]

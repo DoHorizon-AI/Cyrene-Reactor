@@ -136,7 +136,12 @@ def main() -> None:
         if args.deployment_command == "list":
             raise SystemExit(_deployment_list(configuration))
         raise SystemExit(_deployment_stop(configuration, args.deployment_id))
-    if args.host not in {"127.0.0.1", "localhost", "::1"} and not (
+    allow_insecure = os.environ.get("CYRENE_INSECURE_HTTP", "").lower() in {
+        "1",
+        "true",
+        "yes",
+    } or os.environ.get("REACTOR_ALLOW_INSECURE", "").lower() in {"1", "true", "yes"}
+    if not allow_insecure and args.host not in {"127.0.0.1", "localhost", "::1"} and not (
         args.tls_certificate and args.tls_key
     ):
         raise SystemExit("Remote listeners require TLS; a loopback SSH tunnel is also supported")

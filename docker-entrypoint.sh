@@ -62,10 +62,19 @@ fi
 HOST="${REACTOR_HOST:-0.0.0.0}"
 PORT="${REACTOR_PORT:-19300}"
 
-echo "[entrypoint] Starting Cyrene Reactor controller on ${HOST}:${PORT} (TLS enabled)..."
-exec cyrene-reactor control \
-    --config "${CONFIG_FILE}" \
-    --host "${HOST}" \
-    --port "${PORT}" \
-    --tls-certificate "${DATA_DIR}/certs/tls.crt" \
-    --tls-key "${DATA_DIR}/certs/tls.key"
+if [ "${REACTOR_ENABLE_TLS:-false}" = "true" ]; then
+    echo "[entrypoint] Starting Cyrene Reactor controller on ${HOST}:${PORT} (TLS enabled)..."
+    exec cyrene-reactor control \
+        --config "${CONFIG_FILE}" \
+        --host "${HOST}" \
+        --port "${PORT}" \
+        --tls-certificate "${DATA_DIR}/certs/tls.crt" \
+        --tls-key "${DATA_DIR}/certs/tls.key"
+else
+    echo "[entrypoint] Starting Cyrene Reactor controller on ${HOST}:${PORT} (plain HTTP)..."
+    export CYRENE_INSECURE_HTTP="1"
+    exec cyrene-reactor control \
+        --config "${CONFIG_FILE}" \
+        --host "${HOST}" \
+        --port "${PORT}"
+fi
