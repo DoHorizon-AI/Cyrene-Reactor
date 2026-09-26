@@ -181,6 +181,7 @@ class AiInferenceServicerImpl(AiInferenceServicer):
                     generation_kwargs=generation_kwargs or None,
                     engine_kwargs=engine_kwargs or None,
                     priority=priority,
+                    trace_id=trace_id,
                 ):
                     if chunk_index == 0:
                         first_token_time = time.perf_counter()

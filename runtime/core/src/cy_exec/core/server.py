@@ -90,6 +90,7 @@ class InferenceServer:
 		provider_id: str,
 		engine_kwargs: Optional[Dict] = None,
 		progress_callback: Optional[Callable[[str], None]] = None,
+		trace_id: Optional[str] = None,
 	) -> BaseEngine:
 		if self._is_shutting_down:
 			raise RuntimeError("Server is shutting down.")
@@ -131,7 +132,19 @@ class InferenceServer:
 				try:
 					engine.unload_model()
 				except Exception as unload_err:
-					LOGGER.warning("Failed to unload engine after load error: %s", unload_err)
+					LOGGER.warning(
+						"event=reactor.model_cleanup_failed phase=model_load model_id=%s trace_id=%s cause_type=%s",
+						model_id,
+						trace_id or "unavailable",
+						type(unload_err).__name__,
+						extra={
+							"event_name": "reactor.model_cleanup_failed",
+							"model_id": model_id,
+							"trace_id": trace_id,
+							"phase": "model_load",
+							"cause_type": type(unload_err).__name__,
+						},
+					)
 				raise
 
 			if progress_callback:
@@ -152,6 +165,7 @@ class InferenceServer:
 		priority: int = 0,
 		grpc_context: Optional[grpc.ServicerContext] = None,
 		progress_callback: Optional[Callable[[str], None]] = None,
+		trace_id: Optional[str] = None,
 	) -> Generator[str, None, None]:
 		if self._is_shutting_down:
 			raise RuntimeError("Server is shutting down.")
@@ -197,6 +211,7 @@ class InferenceServer:
 					provider_id=provider_id,
 					engine_kwargs=engine_kwargs,
 					progress_callback=progress_callback if not model_loaded else None,
+					trace_id=trace_id,
 				)
 				# 模型加载完成，发送加载结束消息
 				if not model_loaded:
@@ -295,6 +310,7 @@ class InferenceServer:
 		generation_kwargs: Optional[Dict] = None,
 		engine_kwargs: Optional[Dict] = None,
 		priority: int = 0,
+		trace_id: Optional[str] = None,
 	):
 		"""
 		异步流式推理。
@@ -320,6 +336,7 @@ class InferenceServer:
 					generation_kwargs=generation_kwargs,
 					engine_kwargs=engine_kwargs,
 					priority=priority,
+					trace_id=trace_id,
 				):
 					response_queue.put(chunk)
 			except Exception as e:
@@ -351,7 +368,17 @@ class InferenceServer:
 			try:
 				self.unload_model(model_id)
 			except Exception as unload_err:
-				LOGGER.warning("Failed to unload model %s during shutdown: %s", model_id, unload_err)
+				LOGGER.warning(
+					"event=reactor.model_cleanup_failed phase=shutdown model_id=%s cause_type=%s",
+					model_id,
+					type(unload_err).__name__,
+					extra={
+						"event_name": "reactor.model_cleanup_failed",
+						"model_id": model_id,
+						"phase": "shutdown",
+						"cause_type": type(unload_err).__name__,
+					},
+				)
 
 	def get_loaded_models(self) -> List[str]:
 		"""Return model identities known to the Product coordinator.
