@@ -25,6 +25,7 @@ RUN cargo build --locked --release -p cyrene-reactor-host-placement
 
 # --- Stage 2: Runtime Image (Python 3.12) ---
 FROM python:3.12-slim-bookworm AS runtime
+LABEL org.opencontainers.image.source="https://github.com/DoHorizon-AI/Cyrene-Reactor"
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
