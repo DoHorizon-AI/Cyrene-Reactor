@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
-from typing import Literal
+from typing import Literal, cast
 from uuid import UUID
 
 from pydantic import Field
@@ -102,7 +102,7 @@ def project_workspace_model_import(model_import: ModelImport) -> WorkspaceModelI
         name=name,
         serving_binding_id=model_import.serving_binding_id,
         source=WorkspaceModelImportSourceProjection(kind=source.kind, revision=source.revision),
-        state=model_import.state,
+        state=cast(Literal["VALIDATING", "READY", "FAILED"], model_import.state),
         model_artifact=_artifact_projection(model_import.model_artifact),
         validation=(
             WorkspaceModelImportValidationProjection(
