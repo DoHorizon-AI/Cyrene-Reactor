@@ -151,6 +151,10 @@ def main() -> None:
     app = create_app(
         database_path=Path(configuration["database_path"]),
         credential_file=Path(configuration["credential_file"]),
+        workspace_credential_map_json=os.environ.get("REACTOR_WORKSPACE_CREDENTIAL_MAP"),
+        workspace_serving_binding_grants_json=os.environ.get(
+            "REACTOR_WORKSPACE_SERVING_BINDING_GRANTS"
+        ),
         engines=engines,
         exchange_receivers={
             receiver.receiver_id: ExchangeHandoff(receiver, configuration["public_base_url"])

@@ -61,6 +61,13 @@ class ReactorStore:
                     id TEXT PRIMARY KEY,
                     document TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS model_import_scopes (
+                    id TEXT PRIMARY KEY,
+                    organization_id TEXT NOT NULL,
+                    workspace_id TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_model_import_scopes_scope
+                ON model_import_scopes(organization_id, workspace_id);
                 CREATE TABLE IF NOT EXISTS idempotency (
                     scope TEXT NOT NULL,
                     key TEXT NOT NULL,
@@ -184,16 +191,20 @@ class ReactorStore:
             ).fetchall()
         return [DeploymentDraft.model_validate_json(row["document"]) for row in rows]
 
-    def resolve_model_import_request(self, key: str | None, digest: str) -> str | None:
+    def resolve_model_import_request(
+        self,
+        key: str | None,
+        digest: str,
+        idempotency_scope: str = "model-import",
+    ) -> str | None:
         """Resolve model-import replay or reject conflicting key reuse. | 解析导入幂等重放。"""
 
         if key is None:
             return None
         with self._lock:
             row = self._connection.execute(
-                "SELECT request_hash, resource_id FROM idempotency "
-                "WHERE scope = 'model-import' AND key = ?",
-                (key,),
+                "SELECT request_hash, resource_id FROM idempotency WHERE scope = ? AND key = ?",
+                (idempotency_scope, key),
             ).fetchone()
         if row is None:
             return None
@@ -207,13 +218,42 @@ class ReactorStore:
         return str(row["resource_id"])
 
     def commit_model_import_intent(
-        self, model_import: ModelImport, key: str | None, digest: str
+        self,
+        model_import: ModelImport,
+        key: str | None,
+        digest: str,
+        *,
+        idempotency_scope: str = "model-import",
+        workspace_scope: tuple[str, str] | None = None,
+        workspace_serving_binding_grants: frozenset[tuple[str, str, str]] = frozenset(),
     ) -> str | None:
         """Persist import intent and retry identity atomically. | 原子持久化导入意图。"""
 
         with self._lock, self._connection:
-            replay = self.resolve_model_import_request(key, digest)
+            if (
+                workspace_scope is not None
+                and (
+                    model_import.serving_binding_id,
+                    workspace_scope[0],
+                    workspace_scope[1],
+                )
+                not in workspace_serving_binding_grants
+            ):
+                raise ReactorProductError(
+                    code="REACTOR_WORKSPACE_BINDING_NOT_GRANTED",
+                    title="Serving binding is not granted",
+                    detail="The selected serving binding is not granted to this Workspace.",
+                    status=403,
+                )
+            replay = self.resolve_model_import_request(key, digest, idempotency_scope)
             if replay is not None:
+                if self.model_import_scope(UUID(replay)) != workspace_scope:
+                    raise ReactorProductError(
+                        code="REACTOR_WORKSPACE_SCOPE_CONFLICT",
+                        title="Workspace scope conflict",
+                        detail="The ModelImport belongs to a different Workspace scope.",
+                        status=409,
+                    )
                 return replay
             self._connection.execute(
                 "INSERT INTO model_imports(id, document) VALUES (?, ?)",
@@ -222,8 +262,14 @@ class ReactorStore:
             if key is not None:
                 self._connection.execute(
                     "INSERT INTO idempotency(scope, key, request_hash, resource_id) "
-                    "VALUES ('model-import', ?, ?, ?)",
-                    (key, digest, str(model_import.id)),
+                    "VALUES (?, ?, ?, ?)",
+                    (idempotency_scope, key, digest, str(model_import.id)),
+                )
+            if workspace_scope is not None:
+                self._connection.execute(
+                    "INSERT INTO model_import_scopes(id, organization_id, workspace_id) "
+                    "VALUES (?, ?, ?)",
+                    (str(model_import.id), workspace_scope[0], workspace_scope[1]),
                 )
         return None
 
@@ -245,12 +291,68 @@ class ReactorStore:
             ).fetchone()
         return ModelImport.model_validate_json(row["document"]) if row else None
 
+    def get_unscoped_model_import(self, identifier: UUID) -> ModelImport | None:
+        """Read only legacy imports without trusted Workspace provenance."""
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT model_imports.document FROM model_imports "
+                "LEFT JOIN model_import_scopes ON model_import_scopes.id = model_imports.id "
+                "WHERE model_imports.id = ? AND model_import_scopes.id IS NULL",
+                (str(identifier),),
+            ).fetchone()
+        return ModelImport.model_validate_json(row["document"]) if row else None
+
+    def get_model_import_for_workspace(
+        self,
+        identifier: UUID,
+        organization_id: str,
+        workspace_id: str,
+    ) -> ModelImport | None:
+        """Read an import only from its exact authenticated scope."""
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT model_imports.document FROM model_imports "
+                "JOIN model_import_scopes ON model_import_scopes.id = model_imports.id "
+                "WHERE model_imports.id = ? AND model_import_scopes.organization_id = ? "
+                "AND model_import_scopes.workspace_id = ?",
+                (str(identifier), organization_id, workspace_id),
+            ).fetchone()
+        return ModelImport.model_validate_json(row["document"]) if row else None
+
+    def model_import_scope(self, identifier: UUID) -> tuple[str, str] | None:
+        """Return immutable import provenance, or None for legacy records."""
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT organization_id, workspace_id FROM model_import_scopes WHERE id = ?",
+                (str(identifier),),
+            ).fetchone()
+        return (str(row[0]), str(row[1])) if row else None
+
     def list_model_imports(self) -> list[ModelImport]:
-        """List validated imports for deployment selection. | 列出可部署的导入。"""
+        """List legacy imports without trusted Workspace provenance."""
 
         with self._lock:
             rows = self._connection.execute(
-                "SELECT document FROM model_imports ORDER BY rowid DESC"
+                "SELECT model_imports.document FROM model_imports "
+                "LEFT JOIN model_import_scopes ON model_import_scopes.id = model_imports.id "
+                "WHERE model_import_scopes.id IS NULL ORDER BY model_imports.rowid DESC"
+            ).fetchall()
+        return [ModelImport.model_validate_json(row["document"]) for row in rows]
+
+    def list_model_imports_for_workspace(
+        self,
+        organization_id: str,
+        workspace_id: str,
+    ) -> list[ModelImport]:
+        """List imports whose ProductStore provenance matches exactly."""
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT model_imports.document FROM model_imports "
+                "JOIN model_import_scopes ON model_import_scopes.id = model_imports.id "
+                "WHERE model_import_scopes.organization_id = ? "
+                "AND model_import_scopes.workspace_id = ? "
+                "ORDER BY model_imports.rowid DESC",
+                (organization_id, workspace_id),
             ).fetchall()
         return [ModelImport.model_validate_json(row["document"]) for row in rows]
 

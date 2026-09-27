@@ -107,7 +107,7 @@ def test_structured_log_formatting():
 def test_api_traceparent_and_error_handling():
     with TemporaryDirectory() as tmp:
         db_path = Path(tmp) / "reactor.db"
-        app = create_app(database_path=db_path)
+        app = create_app(allow_unauthenticated_dev=True, database_path=db_path)
         client = TestClient(app)
 
         # Send request with W3C traceparent and x-request-id

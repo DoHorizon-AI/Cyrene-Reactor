@@ -30,7 +30,9 @@ def _hugging_face_source() -> dict[str, object]:
 
 def test_import_lifecycle_read_back_and_idempotent_replay(tmp_path: Path) -> None:
     engine = _TestServingExecutionPort()
-    app = create_app(database_path=tmp_path / "reactor.sqlite3", engine=engine)
+    app = create_app(
+        allow_unauthenticated_dev=True, database_path=tmp_path / "reactor.sqlite3", engine=engine
+    )
     try:
         with TestClient(app) as client:
             response = client.post(
@@ -90,7 +92,9 @@ def test_import_lifecycle_read_back_and_idempotent_replay(tmp_path: Path) -> Non
 
 def test_import_requires_a_pinned_revision(tmp_path: Path) -> None:
     engine = _TestServingExecutionPort()
-    app = create_app(database_path=tmp_path / "reactor.sqlite3", engine=engine)
+    app = create_app(
+        allow_unauthenticated_dev=True, database_path=tmp_path / "reactor.sqlite3", engine=engine
+    )
     try:
         with TestClient(app) as client:
             response = client.post(
@@ -114,7 +118,9 @@ def test_import_requires_a_pinned_revision(tmp_path: Path) -> None:
 
 def test_import_rejects_remote_code_and_relative_local_paths(tmp_path: Path) -> None:
     engine = _TestServingExecutionPort()
-    app = create_app(database_path=tmp_path / "reactor.sqlite3", engine=engine)
+    app = create_app(
+        allow_unauthenticated_dev=True, database_path=tmp_path / "reactor.sqlite3", engine=engine
+    )
     try:
         with TestClient(app) as client:
             remote_code = client.post(
@@ -156,7 +162,9 @@ def test_import_rejects_remote_code_and_relative_local_paths(tmp_path: Path) -> 
 
 def test_failed_import_is_persisted_with_a_diagnosable_problem(tmp_path: Path) -> None:
     engine = _TestServingExecutionPort()
-    app = create_app(database_path=tmp_path / "reactor.sqlite3", engine=engine)
+    app = create_app(
+        allow_unauthenticated_dev=True, database_path=tmp_path / "reactor.sqlite3", engine=engine
+    )
     try:
         with TestClient(app) as client:
             response = client.post(
@@ -186,7 +194,9 @@ def test_failed_import_is_persisted_with_a_diagnosable_problem(tmp_path: Path) -
 
 def test_unknown_import_is_not_found(tmp_path: Path) -> None:
     engine = _TestServingExecutionPort()
-    app = create_app(database_path=tmp_path / "reactor.sqlite3", engine=engine)
+    app = create_app(
+        allow_unauthenticated_dev=True, database_path=tmp_path / "reactor.sqlite3", engine=engine
+    )
     try:
         with TestClient(app) as client:
             response = client.get("/api/v1/model-imports/11111111-1111-4111-8111-111111111111")

@@ -91,7 +91,11 @@ def test_model_registry_mismatch_fails_the_started_deployment(
         "cyrene_reactor_product.remote_engine.httpx.Client",
         lambda **kwargs: original_client(transport=httpx.MockTransport(respond), **kwargs),
     )
-    app = create_app(database_path=tmp_path / "reactor.sqlite3", engines={"remote": engine})
+    app = create_app(
+        allow_unauthenticated_dev=True,
+        database_path=tmp_path / "reactor.sqlite3",
+        engines={"remote": engine},
+    )
     try:
         with TestClient(app) as client:
             response = client.post(

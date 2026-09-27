@@ -148,7 +148,9 @@ def _model(kind: str = "model") -> dict[str, Any]:
 
 def test_runtime_paths_match_frozen_openapi(tmp_path: Path) -> None:
     engine = _TestServingExecutionPort()
-    app = create_app(database_path=tmp_path / "reactor.sqlite3", engine=engine)
+    app = create_app(
+        allow_unauthenticated_dev=True, database_path=tmp_path / "reactor.sqlite3", engine=engine
+    )
     contract, _ = read_from_filename(
         str(Path(__file__).parents[2] / "contracts/product/v1/openapi.yaml")
     )
@@ -160,7 +162,9 @@ def test_lifecycle_restart_reconcile_and_stop(tmp_path: Path) -> None:
     database = tmp_path / "reactor.sqlite3"
     executions: dict[str, dict[str, Any]] = {}
     engine_before_restart = _TestServingExecutionPort(executions)
-    app = create_app(database_path=database, engine=engine_before_restart)
+    app = create_app(
+        allow_unauthenticated_dev=True, database_path=database, engine=engine_before_restart
+    )
     restarted_engine = _TestServingExecutionPort(executions)
     restarted = None
     deployment: dict[str, Any] = {}
@@ -187,7 +191,9 @@ def test_lifecycle_restart_reconcile_and_stop(tmp_path: Path) -> None:
             assert endpoint["url"] == executions[deployment["id"]]["endpoint_url"]
         app.state.reactor_store.close()
 
-        restarted = create_app(database_path=database, engine=restarted_engine)
+        restarted = create_app(
+            allow_unauthenticated_dev=True, database_path=database, engine=restarted_engine
+        )
         with TestClient(restarted) as client:
             reconciled = client.get(f"/api/v1/deployments/{deployment['id']}")
             assert reconciled.status_code == 200
@@ -223,7 +229,9 @@ def test_lifecycle_restart_reconcile_and_stop(tmp_path: Path) -> None:
 
 def test_unsupported_model_persists_failed_deployment(tmp_path: Path) -> None:
     engine = _TestServingExecutionPort()
-    app = create_app(database_path=tmp_path / "reactor.sqlite3", engine=engine)
+    app = create_app(
+        allow_unauthenticated_dev=True, database_path=tmp_path / "reactor.sqlite3", engine=engine
+    )
     try:
         with TestClient(app) as client:
             command = {
@@ -281,7 +289,7 @@ def test_legacy_execution_reference_is_migrated_out_of_product_json(tmp_path: Pa
         )
 
     engine = _TestServingExecutionPort()
-    app = create_app(database_path=database, engine=engine)
+    app = create_app(allow_unauthenticated_dev=True, database_path=database, engine=engine)
     try:
         with TestClient(app) as client:
             deployment = client.get(f"/api/v1/deployments/{deployment_id}").json()
@@ -293,7 +301,9 @@ def test_legacy_execution_reference_is_migrated_out_of_product_json(tmp_path: Pa
 
 def test_deployment_events_record_phase_transitions(tmp_path: Path) -> None:
     engine = _TestServingExecutionPort()
-    app = create_app(database_path=tmp_path / "reactor.sqlite3", engine=engine)
+    app = create_app(
+        allow_unauthenticated_dev=True, database_path=tmp_path / "reactor.sqlite3", engine=engine
+    )
     try:
         with TestClient(app) as client:
             created = client.post(

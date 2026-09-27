@@ -45,6 +45,7 @@ from cyrene_reactor_product.domain import (
 from cyrene_reactor_product.engine import ServingExecutionPort
 from cyrene_reactor_product.errors import ReactorProductError, ServingEngineFailure
 from cyrene_reactor_product.store import ReactorStore
+from cyrene_reactor_product.workspace_auth import WorkspaceScope
 
 # A deployment in one of these states will not produce more output on its own.
 # 中文:处于这些状态之一的 Deployment 不会自行产生更多输出。
@@ -57,6 +58,18 @@ def request_hash(command: CreateDeploymentRequest) -> str:
 
     body = command.model_dump_json(by_alias=True, exclude_none=True)
     return hashlib.sha256(body.encode()).hexdigest()
+
+
+def _model_import_idempotency_scope(scope: WorkspaceScope | None) -> str:
+    """Separate private replay keys by trusted scope from legacy keys."""
+    if scope is None:
+        return "model-import"
+    canonical_scope = json.dumps(
+        [scope.organization_id, scope.workspace_id],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return "model-import:workspace:" + hashlib.sha256(canonical_scope).hexdigest()
 
 
 def serving_artifact(deployment: Deployment) -> ArtifactRef:
@@ -218,10 +231,12 @@ class ReactorService:
         store: ReactorStore,
         engine: ServingExecutionPort,
         engines: dict[str, ServingExecutionPort] | None = None,
+        workspace_serving_binding_grants: frozenset[tuple[str, str, str]] = frozenset(),
     ) -> None:
         self.store = store
         self.engine = engine
         self.engines = engines
+        self.workspace_serving_binding_grants = workspace_serving_binding_grants
         self._commands = RLock()
 
     def _append_deployment_event(
@@ -261,7 +276,11 @@ class ReactorService:
             return self._create_deployment(command, idempotency_key)
 
     def create_model_import(
-        self, command: CreateModelImportRequest, idempotency_key: str | None
+        self,
+        command: CreateModelImportRequest,
+        idempotency_key: str | None,
+        *,
+        workspace_scope: WorkspaceScope | None = None,
     ) -> ModelImport:
         """Validate and persist an external model import. | 校验并持久化外部模型导入。"""
 
@@ -276,12 +295,30 @@ class ReactorService:
                     ),
                     status=422,
                 )
+            if (
+                workspace_scope is not None
+                and (
+                    command.serving_binding_id,
+                    workspace_scope.organization_id,
+                    workspace_scope.workspace_id,
+                )
+                not in self.workspace_serving_binding_grants
+            ):
+                raise ReactorProductError(
+                    code="REACTOR_WORKSPACE_BINDING_NOT_GRANTED",
+                    title="Serving binding is not granted",
+                    detail="The selected serving binding is not granted to this Workspace.",
+                    status=403,
+                )
             digest = hashlib.sha256(
                 command.model_dump_json(by_alias=True, exclude_none=True).encode()
             ).hexdigest()
-            replay_id = self.store.resolve_model_import_request(idempotency_key, digest)
+            idempotency_scope = _model_import_idempotency_scope(workspace_scope)
+            replay_id = self.store.resolve_model_import_request(
+                idempotency_key, digest, idempotency_scope
+            )
             if replay_id is not None:
-                return self._require_model_import(UUID(replay_id))
+                return self._require_model_import_for_scope(UUID(replay_id), workspace_scope)
             engine = self._engine(command.serving_binding_id)
             now = utc_now()
             pending = ModelImport(
@@ -295,9 +332,21 @@ class ReactorService:
                 updated_at=now,
                 resource_version=1,
             )
-            replay = self.store.commit_model_import_intent(pending, idempotency_key, digest)
+            workspace_record_scope = (
+                (workspace_scope.organization_id, workspace_scope.workspace_id)
+                if workspace_scope is not None
+                else None
+            )
+            replay = self.store.commit_model_import_intent(
+                pending,
+                idempotency_key,
+                digest,
+                idempotency_scope=idempotency_scope,
+                workspace_scope=workspace_record_scope,
+                workspace_serving_binding_grants=self.workspace_serving_binding_grants,
+            )
             if replay is not None:
-                return self._require_model_import(UUID(replay))
+                return self._require_model_import_for_scope(UUID(replay), workspace_scope)
             try:
                 result = engine.import_model(command)
             except ServingEngineFailure as exc:
@@ -347,8 +396,35 @@ class ReactorService:
 
         return self.store.list_model_imports()
 
+    def list_model_imports_for_workspace(self, scope: WorkspaceScope) -> list[ModelImport]:
+        """List imports whose Product provenance matches the bearer scope."""
+        return self.store.list_model_imports_for_workspace(
+            scope.organization_id, scope.workspace_id
+        )
+
     def _require_model_import(self, model_import_id: UUID) -> ModelImport:
-        model_import = self.store.get_model_import(model_import_id)
+        model_import = self.store.get_unscoped_model_import(model_import_id)
+        if model_import is None:
+            raise ReactorProductError(
+                code="REACTOR_MODEL_IMPORT_NOT_FOUND",
+                title="Model import not found",
+                detail="No ModelImport exists with the requested id.",
+                status=404,
+            )
+        return model_import
+
+    def _require_model_import_for_scope(
+        self,
+        model_import_id: UUID,
+        scope: WorkspaceScope | None,
+    ) -> ModelImport:
+        if scope is None:
+            return self._require_model_import(model_import_id)
+        model_import = self.store.get_model_import_for_workspace(
+            model_import_id,
+            scope.organization_id,
+            scope.workspace_id,
+        )
         if model_import is None:
             raise ReactorProductError(
                 code="REACTOR_MODEL_IMPORT_NOT_FOUND",
