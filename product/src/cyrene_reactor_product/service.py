@@ -343,7 +343,7 @@ class ReactorService:
                 else None
             )
 
-            def persist_intent():
+            def persist_intent() -> str | None:
                 return self.store.commit_model_import_intent(
                     pending,
                     idempotency_key,
