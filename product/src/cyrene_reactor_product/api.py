@@ -123,6 +123,7 @@ def create_app(
     app.state.reactor_store = store
     app.state.reactor_engine = serving_engine
     app.state.reactor_service = service
+    app.router.on_shutdown.append(service.close)
 
     @app.middleware("http")
     async def propagate_trace(

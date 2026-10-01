@@ -24,6 +24,8 @@ from cyrene_reactor_product.domain import (
     DeploymentPhase,
     Endpoint,
     ModelImport,
+    ModelImportState,
+    ObservedState,
 )
 from cyrene_reactor_product.errors import ReactorProductError
 
@@ -338,6 +340,34 @@ class ReactorStore:
                 "WHERE model_import_scopes.id IS NULL ORDER BY model_imports.rowid DESC"
             ).fetchall()
         return [ModelImport.model_validate_json(row["document"]) for row in rows]
+
+    def list_active_activity_tasks(self) -> list[dict[str, str]]:
+        """Return active imports and deployment transitions for gate reconciliation."""
+
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT document FROM model_imports ORDER BY rowid"
+            ).fetchall()
+        imports = [ModelImport.model_validate_json(row["document"]) for row in rows]
+        tasks = [
+            {"task_id": f"model-import:{model_import.id}", "state": "RUNNING"}
+            for model_import in imports
+            if model_import.state is ModelImportState.VALIDATING
+        ]
+        deployments = self.list_deployments()
+        tasks.extend(
+            {
+                "task_id": f"deployment:{deployment.id}",
+                "state": (
+                    "CANCELING"
+                    if deployment.observed_state is ObservedState.STOPPING
+                    else "DISPATCHING"
+                ),
+            }
+            for deployment in deployments
+            if deployment.observed_state in {ObservedState.STARTING, ObservedState.STOPPING}
+        )
+        return tasks
 
     def list_model_imports_for_workspace(
         self,
