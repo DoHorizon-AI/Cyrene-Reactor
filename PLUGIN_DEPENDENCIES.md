@@ -1,15 +1,18 @@
 # Plugin dependencies / 插件依赖
 
 Reactor consumes the Plugins-owned direct transport SDK from the immutable
-accepted Plugins revision below. It does not read a sibling Plugins checkout
-at runtime and does not copy the execution-engine schema.
+accepted Plugins revision below. The SDK metadata declares compatible gRPC
+and protobuf ranges, so Reactor resolves its transport versions without
+dependency overrides. It does not read a sibling Plugins checkout at runtime
+and does not copy the execution-engine schema.
 
-Reactor 使用下方 Plugins 已接受提交中的直连传输 SDK。运行时不读取相邻 Plugins
-源码目录，也不复制 execution-engine schema。
+Reactor 使用下方 Plugins 已接受提交中的直连传输 SDK。SDK 元数据声明了兼容的 gRPC
+和 protobuf 范围，因此 Reactor 无需依赖覆盖即可解析传输版本。运行时不读取相邻
+Plugins 源码目录，也不复制 execution-engine schema。
 
 | Package | Source | License status | Purpose |
 |---|---|---|---|
-| `cyrene-plugin-runtime` | `Cyrene-Plugins-Official@3afbac4d386eb7a27f6778149187884820c0b7f6`, `sdk/python/cyrene_plugin_runtime` | **UNDECLARED upstream** | `DirectPluginRuntime` gRPC client and typed payload facade |
+| `cyrene-plugin-runtime` | `Cyrene-Plugins-Official@bbe533038d14c6f86758c233296b692baedbcc06`, `sdk/python/cyrene_plugin_runtime` | **UNDECLARED upstream** | `DirectPluginRuntime` gRPC client and typed payload facade |
 
 `execution.engine.v1` payloads remain owned by Plugins. Reactor only encodes and
 validates the owner-defined JSON bytes and canonical type URLs at its Product
@@ -34,7 +37,7 @@ Reactor 使用下方不可变且已接受的 Plugins 修订版本所拥有的直
 
 | 软件包 | 来源 | 许可证状态 | 用途 |
 |---|---|---|---|
-| `cyrene-plugin-runtime` | `Cyrene-Plugins-Official@3afbac4d386eb7a27f6778149187884820c0b7f6`，`sdk/python/cyrene_plugin_runtime` | **上游未声明** | `DirectPluginRuntime` gRPC 客户端和有类型载荷门面 |
+| `cyrene-plugin-runtime` | `Cyrene-Plugins-Official@bbe533038d14c6f86758c233296b692baedbcc06`，`sdk/python/cyrene_plugin_runtime` | **上游未声明** | `DirectPluginRuntime` gRPC 客户端和有类型载荷门面 |
 
 `execution.engine.v1` 载荷仍由 Plugins 所有。Reactor 只在 Product 端口编码并验证由 owner 定义的 JSON 字节和规范类型 URL。
 
