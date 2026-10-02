@@ -44,6 +44,7 @@ from cyrene_reactor_product.domain import (
 )
 from cyrene_reactor_product.engine import ServingExecutionPort
 from cyrene_reactor_product.errors import ReactorProductError, ServingEngineFailure
+from cyrene_reactor_product.runtime_activity import start_activity_source
 from cyrene_reactor_product.store import ReactorStore
 from cyrene_reactor_product.workspace_auth import WorkspaceScope
 
@@ -238,6 +239,10 @@ class ReactorService:
         self.engines = engines
         self.workspace_serving_binding_grants = workspace_serving_binding_grants
         self._commands = RLock()
+        self.activity = start_activity_source(
+            "cyrene-reactor",
+            self.store.list_active_activity_tasks,
+        )
 
     def _append_deployment_event(
         self,
@@ -337,16 +342,38 @@ class ReactorService:
                 if workspace_scope is not None
                 else None
             )
-            replay = self.store.commit_model_import_intent(
-                pending,
-                idempotency_key,
-                digest,
-                idempotency_scope=idempotency_scope,
-                workspace_scope=workspace_record_scope,
-                workspace_serving_binding_grants=self.workspace_serving_binding_grants,
-            )
+
+            def persist_intent() -> str | None:
+                return self.store.commit_model_import_intent(
+                    pending,
+                    idempotency_key,
+                    digest,
+                    idempotency_scope=idempotency_scope,
+                    workspace_scope=workspace_record_scope,
+                    workspace_serving_binding_grants=self.workspace_serving_binding_grants,
+                )
+
+            if self.activity is None:
+                replay = persist_intent()
+            else:
+                replay = self.activity.admit_and_persist(
+                    f"model-import:{pending.id}",
+                    persist_intent,
+                    state="ACCEPTED",
+                )
             if replay is not None:
+                if self.activity is not None:
+                    self.activity.complete_after_persist(
+                        f"model-import:{pending.id}",
+                        lambda: None,
+                    )
                 return self._require_model_import_for_scope(UUID(replay), workspace_scope)
+            if self.activity is not None:
+                self.activity.transition_and_persist(
+                    f"model-import:{pending.id}",
+                    "RUNNING",
+                    lambda: None,
+                )
             try:
                 result = engine.import_model(command)
             except ServingEngineFailure as exc:
@@ -370,7 +397,13 @@ class ReactorService:
                         "resource_version": 2,
                     }
                 )
-                self.store.save_model_import(failed)
+                if self.activity is None:
+                    self.store.save_model_import(failed)
+                else:
+                    self.activity.complete_after_persist(
+                        f"model-import:{pending.id}",
+                        lambda: self.store.save_model_import(failed),
+                    )
                 raise error from exc
             ready = pending.model_copy(
                 update={
@@ -382,8 +415,20 @@ class ReactorService:
                     "resource_version": 2,
                 }
             )
-            self.store.save_model_import(ready)
+            if self.activity is None:
+                self.store.save_model_import(ready)
+            else:
+                self.activity.complete_after_persist(
+                    f"model-import:{pending.id}",
+                    lambda: self.store.save_model_import(ready),
+                )
             return ready
+
+    def close(self) -> None:
+        """Stop the activity heartbeat during orderly application shutdown."""
+
+        if self.activity is not None:
+            self.activity.close()
 
     def get_model_import(self, model_import_id: UUID) -> ModelImport:
         """Read a persisted model import. | 读取持久化模型导入。"""
@@ -458,11 +503,35 @@ class ReactorService:
             resource_version=1,
         )
         self._engine(deployment.serving_binding_id)
-        replay = self.store.create_intent(deployment, idempotency_key, digest)
+        task_id = f"deployment:{deployment.id}"
+
+        def persist_intent() -> str | None:
+            return self.store.create_intent(
+                deployment,
+                idempotency_key,
+                digest,
+            )
+
+        if self.activity is None:
+            replay = persist_intent()
+        else:
+            replay = self.activity.admit_and_persist(
+                task_id,
+                persist_intent,
+                state="ACCEPTED",
+            )
         if replay is not None:
+            if self.activity is not None:
+                self.activity.complete_after_persist(task_id, lambda: None)
             return self.get_deployment(UUID(replay))
         self._append_deployment_event(deployment.id, DeploymentPhase.QUEUED, "Deployment queued")
-        return self._launch(deployment)
+        if self.activity is None:
+            return self._launch(deployment)
+        return self.activity.transition_and_persist(
+            task_id,
+            "DISPATCHING",
+            lambda: self._launch(deployment),
+        )
 
     def _launch(self, deployment: Deployment) -> Deployment:
         self._append_deployment_event(
@@ -560,27 +629,43 @@ class ReactorService:
                     "resource_version": deployment.resource_version + 1,
                 }
             )
-            if exc.execution_ref is not None and exc.endpoint_url is not None:
-                now = utc_now()
-                previous = (
-                    self._require_endpoint(deployment.endpoint_id)
-                    if deployment.endpoint_id
-                    else None
-                )
-                endpoint = Endpoint(
-                    id=deployment.endpoint_id or uuid4(),
-                    deployment_id=deployment.id,
-                    state=EndpointState.UNHEALTHY,
-                    url=exc.endpoint_url,
-                    model=previous.model if previous else None,
-                    created_at=previous.created_at if previous else now,
-                    updated_at=now,
-                    resource_version=previous.resource_version + 1 if previous else 1,
-                )
-                failed = failed.model_copy(update={"endpoint_id": endpoint.id})
-                self.store.save_pair(failed, endpoint, execution_ref=exc.execution_ref)
+            failure_execution_ref = exc.execution_ref
+            failure_endpoint_url = exc.endpoint_url
+
+            def persist_failure() -> None:
+                if failure_execution_ref is not None and failure_endpoint_url is not None:
+                    now = utc_now()
+                    previous = (
+                        self._require_endpoint(deployment.endpoint_id)
+                        if deployment.endpoint_id
+                        else None
+                    )
+                    endpoint = Endpoint(
+                        id=deployment.endpoint_id or uuid4(),
+                        deployment_id=deployment.id,
+                        state=EndpointState.UNHEALTHY,
+                        url=failure_endpoint_url,
+                        model=previous.model if previous else None,
+                        created_at=previous.created_at if previous else now,
+                        updated_at=now,
+                        resource_version=previous.resource_version + 1 if previous else 1,
+                    )
+                    failed_with_endpoint = failed.model_copy(update={"endpoint_id": endpoint.id})
+                    self.store.save_pair(
+                        failed_with_endpoint,
+                        endpoint,
+                        execution_ref=failure_execution_ref,
+                    )
+                else:
+                    self.store.save_deployment(failed)
+
+            if self.activity is None:
+                persist_failure()
             else:
-                self.store.save_deployment(failed)
+                self.activity.complete_after_persist(
+                    f"deployment:{deployment.id}",
+                    persist_failure,
+                )
             self._append_deployment_event(
                 deployment.id,
                 DeploymentPhase.FAILED,
@@ -621,7 +706,17 @@ class ReactorService:
                 "resource_version": deployment.resource_version + 1,
             }
         )
-        self.store.save_pair(ready, endpoint, execution_ref=handle.execution_ref)
+
+        def persist_ready() -> None:
+            self.store.save_pair(ready, endpoint, execution_ref=handle.execution_ref)
+
+        if self.activity is None:
+            persist_ready()
+        else:
+            self.activity.complete_after_persist(
+                f"deployment:{deployment.id}",
+                persist_ready,
+            )
         self._append_deployment_event(
             deployment.id,
             DeploymentPhase.READY,
@@ -725,7 +820,25 @@ class ReactorService:
                 "resource_version": deployment.resource_version + 1,
             }
         )
-        self.store.save_deployment(stopping)
+        task_id = f"deployment:{deployment.id}"
+
+        def persist_stopping() -> None:
+            self.store.save_deployment(stopping)
+
+        if self.activity is None:
+            persist_stopping()
+        elif deployment.observed_state in {ObservedState.STARTING, ObservedState.STOPPING}:
+            self.activity.transition_and_persist(
+                task_id,
+                "CANCELING",
+                persist_stopping,
+            )
+        else:
+            self.activity.admit_and_persist(
+                task_id,
+                persist_stopping,
+                state="CANCELING",
+            )
         self._append_deployment_event(
             deployment.id,
             DeploymentPhase.STOPPING,
@@ -775,17 +888,24 @@ class ReactorService:
                 "resource_version": stopping.resource_version + 1,
             }
         )
-        if endpoint is None:
-            self.store.save_deployment(stopped)
+
+        def persist_stopped() -> None:
+            if endpoint is None:
+                self.store.save_deployment(stopped)
+            else:
+                retired = endpoint.model_copy(
+                    update={
+                        "state": EndpointState.RETIRED,
+                        "updated_at": stopped_at,
+                        "resource_version": endpoint.resource_version + 1,
+                    }
+                )
+                self.store.save_pair(stopped, retired)
+
+        if self.activity is None:
+            persist_stopped()
         else:
-            retired = endpoint.model_copy(
-                update={
-                    "state": EndpointState.RETIRED,
-                    "updated_at": stopped_at,
-                    "resource_version": endpoint.resource_version + 1,
-                }
-            )
-            self.store.save_pair(stopped, retired)
+            self.activity.complete_after_persist(task_id, persist_stopped)
         self._append_deployment_event(
             deployment.id,
             DeploymentPhase.RELEASED,
@@ -824,13 +944,31 @@ class ReactorService:
                     "resource_version": deployment.resource_version + 1,
                 }
             )
-            self.store.save_deployment(starting)
+            task_id = f"deployment:{starting.id}"
+
+            def persist_starting() -> None:
+                self.store.save_deployment(starting)
+
+            if self.activity is None:
+                persist_starting()
+            else:
+                self.activity.admit_and_persist(
+                    task_id,
+                    persist_starting,
+                    state="ACCEPTED",
+                )
             self._append_deployment_event(
                 deployment.id,
                 DeploymentPhase.QUEUED,
                 "Deployment restart queued",
             )
-            return self._launch(starting)
+            if self.activity is None:
+                return self._launch(starting)
+            return self.activity.transition_and_persist(
+                task_id,
+                "DISPATCHING",
+                lambda: self._launch(starting),
+            )
 
     def deployment_events(self, deployment_id: UUID) -> DeploymentEventsResponse:
         """List chronological phase transition events for a deployment. | 列出部署阶段事件。"""

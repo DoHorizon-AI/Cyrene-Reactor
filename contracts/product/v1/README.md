@@ -170,3 +170,14 @@ MVP 为同步接口并返回 `201`。生产 reconcile 可支持 RFC 7240，并�
 Product 从服务端映射赋予可信范围，body 不能选择范围。ModelImport、可信 scope 行和可选幂等记录在一个 SQLite 事务中提交。私有列表只通过组织和 Workspace 精确范围 JOIN 读取。旧 `/api/v1/model-imports` 列表和按 ID 读取只暴露无范围导入；legacy 创建的导入仍是无范围数据。Deployment 与 DeploymentDraft 使用独立表，不会通过 ModelImport ID 读取导入记录。
 
 私有 Bearer 只认证 Platform 服务，不建立用户、Workspace 成员或角色身份；它与 legacy `ControlBearer` 分离。缺少 map 返回 `503`，未知 Bearer 返回 `401`，格式错误的 map 会阻止启动。私有创建还要求明确的 `REACTOR_WORKSPACE_SERVING_BINDING_GRANTS` allowlist；每条 grant 将 `servingBindingId` 固定绑定到一个组织和 Workspace，旧 binding 不会自动获得 grant。未授权的 binding 会在引擎执行和 Product 写入前返回 `403`。缺少 legacy `credential_file` 时，所有非健康检查 `/api/v1` 路由也会以 `503` 失败关闭。只有本地开发或测试代码显式设置 `allow_unauthenticated_dev=True` 才允许匿名 legacy 访问；该模式下私有路由仍需要专用 map，私有创建还需要 binding grants。当前 Container Apps workflow 只更新镜像，不配置 ControlBearer、Workspace map 或 Workspace binding grants；启用生产调用前，运维人员必须配置这些项。创建操作保留现有 `201` 响应和可选 `Idempotency-Key` 行为。
+
+## Product operation catalog v2
+
+This Product publishes its Workspace operation catalog at
+[../v2/catalog.json](../v2/catalog.json). Each listed operation binds its exact
+owner operationId to the corresponding OpenAPI source and schema pointers.
+The release manifest pins the catalog and its complete OpenAPI reference closure
+to the same repository commit. This catalog declares operation contracts only;
+Workspace policy controls access independently.
+
+本 Product 在 [../v2/catalog.json](../v2/catalog.json) 发布 Workspace 操作目录。每个目录项都将准确的 owner operationId 绑定到对应的 OpenAPI 文档和 schema pointer。发布清单会将目录及其完整 OpenAPI 引用闭包固定到同一仓库提交。目录只声明操作契约；访问权限由独立的 Workspace policy 控制。
