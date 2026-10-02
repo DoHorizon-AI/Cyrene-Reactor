@@ -72,16 +72,32 @@ GitHub Actions 是自动源码与产品契约检查的 `github` 权威，workflo
 [`ci.yml`](../.github/workflows/ci.yml) 与
 [`product-contract.yml`](../.github/workflows/product-contract.yml)。
 
-The Azure definition is a manual supplemental lane for exact cross-repository,
-protected-resource, deployment, or GPU/runtime acceptance. It is not a second
-automatic source authority. No repository release workflow is present on the
-current branch; `ghcr` remains the planned release authority and
-`automated_release` is therefore false until a release workflow and read-back
-evidence exist.
+The `Immutable component release` GitHub Actions workflow is the publisher for
+attested Reactor component artifacts. The Azure definition remains a manual
+supplemental lane for exact cross-repository, protected-resource, or GPU/runtime
+acceptance; it is not a second automatic source authority. The GitHub Container
+Apps consumer updates the existing Reactor app only after it verifies the
+exact source-SHA index, manifest, OCI digest, and GitHub attestation.
 
-Azure 定义是精确跨仓库、受保护资源、部署或 GPU/runtime 验收的手动补充通道，不是第二个
-自动源码权威。当前分支没有仓库级 release workflow；`ghcr` 仍是计划中的发布权威，因此
-在出现 release workflow 与回读证据前，`automated_release` 保持 false。
+`Immutable component release` GitHub Actions workflow 是 Reactor 组件制品的发布方，并为制品
+提供 attestation。Azure 定义仍用于精确跨仓库、受保护资源或 GPU/runtime 验收的手动补充通道，
+不是第二个自动源码权威。GitHub Container Apps 消费 workflow 只有在验证精确源码 SHA 对应的
+index、manifest、OCI digest 与 GitHub attestation 后，才会更新已有 Reactor app。
+
+## 3.1 Immutable component delivery / 不可变组件交付
+
+Successful component-release runs on `main` and `release` use the stable
+channel; `develop` uses preview. The Azure workflow resolves the immutable
+release for the triggering commit and refuses a missing or mismatched release.
+Manual dispatch uses its current branch and commit under the same verification.
+The consumer does not build or push an image, use a mutable tag, or create an
+Azure app. Existing Azure OIDC and Reactor auth rollout checks, internal
+ingress enforcement, and healthy-revision/image verification remain in force.
+
+`main` 和 `release` 上的成功组件发布运行使用 stable channel；`develop` 使用 preview。Azure
+workflow 按触发提交查找不可变 release；release 缺失或不匹配时会拒绝部署。手动触发也会按当前
+分支和提交执行相同验证。消费端不会构建或推送镜像、使用可变 tag 或创建 Azure app。现有 Azure
+OIDC 与 Reactor auth rollout 检查、内网 ingress 限制，以及健康 revision/镜像验证均保持不变。
 
 ## 4. Public-source boundary / 公开源码边界
 
