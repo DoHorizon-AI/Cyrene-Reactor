@@ -75,6 +75,84 @@ paths:
           $ref: '#/components/responses/Problem'
         '503':
           $ref: '#/components/responses/Problem'
+  /api/v1/deployments/{deploymentId}/events:
+    get:
+      operationId: getDeploymentEvents
+      parameters:
+      - $ref: '#/components/parameters/DeploymentId'
+      responses:
+        '200':
+          description: Historical list of phase events for a deployment
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deploymentId, events]
+                properties:
+                  deploymentId: {type: string, format: uuid}
+                  events:
+                    type: array
+                    items:
+                      type: object
+                      required: [sequence, phase, message, occurredAt]
+                      properties:
+                        sequence: {type: integer, minimum: 1}
+                        phase: {type: string}
+                        message: {type: string}
+                        occurredAt: {type: string, format: date-time}
+                        failureCode: {type: string, nullable: true}
+        '404':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+  /api/v1/deployments/{deploymentId}/diagnostics:
+    get:
+      operationId: getDeploymentDiagnostics
+      parameters:
+      - $ref: '#/components/parameters/DeploymentId'
+      - name: afterSequence
+        in: query
+        required: false
+        schema: {type: integer, minimum: 0, default: 0}
+      - name: limit
+        in: query
+        required: false
+        schema: {type: integer, minimum: 1, maximum: 500, default: 200}
+      responses:
+        '200':
+          description: Bounded page of redacted diagnostics for one deployment
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [resourceId, items, nextSequence, terminal, diagnosticsDegraded]
+                properties:
+                  resourceId: {type: string}
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [sequence, timestamp, level, source, stream, message, truncated]
+                      properties:
+                        sequence: {type: integer, minimum: 1}
+                        timestamp: {type: string}
+                        level: {type: string, enum: [debug, info, warn, error]}
+                        source: {type: string, enum: [product, trainer, runtime, platform]}
+                        stream: {type: string, enum: [stdout, stderr, combined]}
+                        code: {type: string, nullable: true}
+                        message: {type: string}
+                        requestId: {type: string, nullable: true}
+                        operationId: {type: string, nullable: true}
+                        resourceId: {type: string, nullable: true}
+                        attemptId: {type: string, nullable: true}
+                        truncated: {type: boolean}
+                  nextSequence: {type: integer, minimum: 0}
+                  terminal: {type: boolean}
+                  diagnosticsDegraded: {type: boolean}
+        '404':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
   /api/v1/deployments/{deploymentId}/actions/stop:
     post:
       operationId: stopDeployment
@@ -250,42 +328,78 @@ paths:
           $ref: '#/components/responses/Problem'
         '503':
           $ref: '#/components/responses/Problem'
-  /api/v1/serving-bindings/{binding_id}/model-imports:
+  /api/v1/model-imports:
     post:
-      summary: Import Model
-      operationId: import_model_api_v1_serving_bindings__binding_id__model_imports_post
+      summary: Create Model Import
+      operationId: create_model_import_api_v1_model_imports_post
       parameters:
-      - name: binding_id
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Binding Id
+      - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ModelImportRequest'
+              $ref: '#/components/schemas/CreateModelImportRequest'
       responses:
         '201':
+          description: Validated ModelImport
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelImport'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+    get:
+      summary: List Model Imports
+      operationId: list_model_imports_api_v1_model_imports_get
+      responses:
+        '200':
           description: Successful Response
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties: true
-                title: Response Import Model Api V1 Serving Bindings  Binding Id  Model
-                  Imports Post
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                type: array
+                items:
+                  $ref: '#/components/schemas/ModelImport'
         '403':
           $ref: '#/components/responses/Problem'
         '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+  /api/v1/model-imports/{importId}:
+    get:
+      summary: Get Model Import
+      operationId: get_model_import_api_v1_model_imports__importId__get
+      parameters:
+      - name: importId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: ModelImport resource
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelImport'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
           $ref: '#/components/responses/Problem'
         '503':
           $ref: '#/components/responses/Problem'
@@ -846,22 +960,205 @@ components:
           title: Detail
       type: object
       title: HTTPValidationError
-    ModelImportRequest:
+    ModelImportSourceKind:
+      type: string
+      enum:
+      - HUGGING_FACE
+      - LOCAL_PATH
+      title: ModelImportSourceKind
+      description: Admitted external model source kinds. | 允许的外部模型来源类型。
+    ModelImportSource:
       properties:
+        kind:
+          $ref: '#/components/schemas/ModelImportSourceKind'
         repository:
-          type: string
-          title: Repository
+          anyOf:
+          - type: string
+            maxLength: 300
+            minLength: 1
+          - type: 'null'
         revision:
-          type: string
-          title: Revision
+          anyOf:
+          - type: string
+            pattern: ^[0-9a-f]{40}$
+          - type: 'null'
+        path:
+          anyOf:
+          - type: string
+            maxLength: 4096
+            minLength: 1
+          - type: 'null'
       additionalProperties: false
       type: object
       required:
-      - repository
-      - revision
-      title: ModelImportRequest
+      - kind
+      title: ModelImportSource
       description: Immutable external model source, independent of producer Product.
         | 外部模型来源。
+    ModelImportState:
+      type: string
+      enum:
+      - VALIDATING
+      - READY
+      - FAILED
+      title: ModelImportState
+      description: Reactor-owned ModelImport lifecycle. | 模型导入生命周期。
+    ModelImportValidation:
+      properties:
+        weights:
+          type: boolean
+          title: Weights
+        config:
+          type: boolean
+          title: Config
+        tokenizer:
+          type: boolean
+          title: Tokenizer
+        chatTemplate:
+          type: boolean
+          title: Chattemplate
+        license:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: License
+        provenance:
+          type: string
+          minLength: 1
+          title: Provenance
+        digest:
+          type: string
+          pattern: ^sha256:[0-9a-f]{64}$
+          title: Digest
+        trustRemoteCode:
+          const: false
+          title: Trustremotecode
+          default: false
+        issues:
+          items:
+            type: string
+          type: array
+          title: Issues
+      additionalProperties: false
+      type: object
+      required:
+      - weights
+      - config
+      - tokenizer
+      - chatTemplate
+      - provenance
+      - digest
+      title: ModelImportValidation
+      description: Validation evidence returned by the serving binding. | 服务绑定返回的校验证据。
+    ModelImportResult:
+      properties:
+        modelArtifact:
+          $ref: '#/components/schemas/ArtifactRef'
+        validation:
+          $ref: '#/components/schemas/ModelImportValidation'
+      additionalProperties: false
+      type: object
+      required:
+      - modelArtifact
+      - validation
+      title: ModelImportResult
+      description: Validated model artifact published by the binding. | 绑定发布的已校验模型制品。
+    CreateModelImportRequest:
+      properties:
+        name:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Name
+        servingBindingId:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Servingbindingid
+        source:
+          $ref: '#/components/schemas/ModelImportSource'
+        credentialRef:
+          anyOf:
+          - type: string
+            maxLength: 300
+            minLength: 1
+          - type: 'null'
+        trustRemoteCode:
+          type: boolean
+          title: Trustremotecode
+          default: false
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      - servingBindingId
+      - source
+      title: CreateModelImportRequest
+      description: Create-ModelImport command. | 创建模型导入请求。
+    ModelImport:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Name
+        servingBindingId:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Servingbindingid
+        source:
+          $ref: '#/components/schemas/ModelImportSource'
+        credentialRef:
+          anyOf:
+          - type: string
+            maxLength: 300
+            minLength: 1
+          - type: 'null'
+        state:
+          $ref: '#/components/schemas/ModelImportState'
+        modelArtifact:
+          anyOf:
+          - $ref: '#/components/schemas/ArtifactRef'
+          - type: 'null'
+        validation:
+          anyOf:
+          - $ref: '#/components/schemas/ModelImportValidation'
+          - type: 'null'
+        failure:
+          anyOf:
+          - $ref: '#/components/schemas/ProductFailure'
+          - type: 'null'
+        createdAt:
+          type: string
+          format: date-time
+          title: Createdat
+        updatedAt:
+          type: string
+          format: date-time
+          title: Updatedat
+        resourceVersion:
+          type: integer
+          minimum: 1.0
+          title: Resourceversion
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - name
+      - servingBindingId
+      - source
+      - state
+      - createdAt
+      - updatedAt
+      - resourceVersion
+      title: ModelImport
+      description: Persisted import independent of any Deployment. | 独立于 Deployment
+        的持久化导入。
     NodeRef:
       properties:
         nodeId:

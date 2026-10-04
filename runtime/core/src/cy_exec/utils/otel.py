@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 
 
@@ -22,7 +23,11 @@ def init_tracing(service_name: str) -> None:
 		from opentelemetry.sdk.trace import TracerProvider  # type: ignore
 		from opentelemetry.sdk.trace.export import BatchSpanProcessor  # type: ignore
 		from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter  # type: ignore
-	except ImportError:
+	except ImportError as exc:
+		logging.getLogger("cy_llm.worker.otel").warning(
+			"Tracing endpoint is configured but OpenTelemetry is unavailable: %s",
+			type(exc).__name__,
+		)
 		return
 
 	resource = Resource(attributes={SERVICE_NAME: service_name})

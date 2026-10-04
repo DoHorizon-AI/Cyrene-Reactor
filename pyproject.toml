@@ -11,7 +11,7 @@ requires-python = ">=3.11"
 license = "Apache-2.0"
 dependencies = [
     # Plugins-owned direct transport, pinned to the accepted immutable revision.
-    "cyrene-plugin-runtime @ git+https://github.com/DoHorizon-AI/Cyrene-Plugins-Official.git@3afbac4d386eb7a27f6778149187884820c0b7f6#subdirectory=sdk/python/cyrene_plugin_runtime",
+    "cyrene-plugin-runtime @ git+https://github.com/DoHorizon-AI/Cyrene-Plugins-Official.git@bbe533038d14c6f86758c233296b692baedbcc06#subdirectory=sdk/python/cyrene_plugin_runtime",
     "grpcio>=1.60.0",
     "grpcio-tools>=1.60.0",
     "protobuf>=4.25.0",
@@ -24,15 +24,6 @@ dependencies = [
 
 [tool.uv]
 package = false
-# The accepted Plugins SDK currently declares an older transport dependency
-# floor. Reactor's generated protobuf bindings require the current workspace
-# runtime, so resolve both against these tested versions without a sibling
-# checkout. | SDK 元数据较旧，统一解析到 Reactor 已验证的运行时版本。
-override-dependencies = [
-    "grpcio==1.83.0",
-    "grpcio-tools==1.83.0",
-    "protobuf==7.36.0",
-]
 
 [project.optional-dependencies]
 dev = [
@@ -55,5 +46,5 @@ line-length = 120
 target-version = "py311"
 
 [tool.ruff.lint]
-select = ["E9", "F63", "F7"]
+select = ["E9", "F63", "F7", "E722"]
 ignore = []

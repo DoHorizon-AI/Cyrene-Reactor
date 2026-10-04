@@ -1,4 +1,6 @@
-"""Property tests migrated from the Pro structured logging tests."""
+"""Property tests migrated from the Pro structured logging tests.
+
+中文:从 Pro 结构化日志测试迁移的属性测试。"""
 # ┌─────────────────────────────────────────────────────────────────────┐
 # │ 📄 runtime/pro/tests/test_structured_logging_pbt.py
 # │ Module: runtime/pro/tests/test_structured_logging_pbt

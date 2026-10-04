@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -19,14 +20,18 @@ from pydantic import BaseModel, ConfigDict
 
 from cyrene_reactor_product.domain import (
     ArtifactRef,
+    CreateModelImportRequest,
     EngineHandle,
     EngineObservation,
+    ModelImportResult,
+    ModelImportValidation,
     ModelVersionDocument,
     NodeRef,
     canonical_model_version,
     model_version_artifact,
 )
 from cyrene_reactor_product.errors import ServingEngineFailure
+from cyrene_reactor_product.logging import current_diagnostic_trace, format_cyrene_log
 
 
 class ServingBindingConfiguration(BaseModel):
@@ -41,7 +46,9 @@ class ServingBindingConfiguration(BaseModel):
 def _validate_model_version_readback(
     result: dict[str, Any], expected: ModelVersionDocument, model: ArtifactRef
 ) -> ModelVersionDocument:
-    """Canonicalize host readback and verify both composed identity projections."""
+    """Canonicalize host readback and verify both composed identity projections.
+
+    中文:规范化主机回读结果,并验证组合模型的两种身份投影。"""
 
     returned = result.get("modelVersion")
     if not isinstance(returned, dict):
@@ -63,7 +70,9 @@ def _validate_model_version_readback(
 def _canonical_expected_model_version(
     value: dict[str, Any], model: ArtifactRef
 ) -> ModelVersionDocument:
-    """Validate a composed request before sending it to a remote host."""
+    """Validate a composed request before sending it to a remote host.
+
+    中文:向远程主机发送组合模型请求之前先进行验证。"""
 
     canonical = canonical_model_version(value)
     if model_version_artifact(canonical) != model:
@@ -88,6 +97,27 @@ class RemoteServingExecutionPort:
             raise ValueError(
                 "SERVING_TLS_REQUIRED: remote bindings require HTTPS or a local SSH tunnel"
             )
+
+    def import_model(self, command: CreateModelImportRequest) -> ModelImportResult:
+        """Ask the binding to validate and publish the external source. | 委托校验与发布。"""
+
+        payload: dict[str, Any] = {
+            "name": command.name,
+            "source": command.source.model_dump(mode="json", by_alias=True, exclude_none=True),
+            "trustRemoteCode": False,
+        }
+        if command.credential_ref is not None:
+            payload["credentialRef"] = command.credential_ref
+        result = self.request("POST", "/imports", payload)
+        try:
+            artifact = ArtifactRef.model_validate(result["modelArtifact"])
+            validation = ModelImportValidation.model_validate(result["validation"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ServingEngineFailure(
+                "SERVING_RESPONSE_INCOMPATIBLE: the binding returned invalid import evidence",
+                status=409,
+            ) from exc
+        return ModelImportResult(model_artifact=artifact, validation=validation)
 
     def request(self, method: str, path: str, payload: Any = None) -> dict[str, Any]:
         """Call the selected binding with bounded timeout and explicit errors. | 调用选定绑定。"""
@@ -191,7 +221,12 @@ class RemoteServingExecutionPort:
                 model_version_id=returned_version_id,
             )
             if handle.model != "reactor-" + str(deployment_id):
-                raise ValueError("MODEL_IDENTITY_MISMATCH")
+                raise ServingEngineFailure(
+                    "MODEL_IDENTITY_MISMATCH: the binding returned an unexpected served model",
+                    execution_ref=handle.execution_ref,
+                    endpoint_url=handle.endpoint_url,
+                    status=409,
+                )
         except (ValueError, KeyError, TypeError) as exc:
             raise ServingEngineFailure(
                 "SERVING_RESPONSE_INCOMPATIBLE: restore the binding before retrying",
@@ -217,6 +252,67 @@ class RemoteServingExecutionPort:
                 retryable=True,
             )
         return handle
+
+    def verify_served_model(
+        self,
+        deployment_id: UUID,
+        execution_ref: str,
+        endpoint_url: str,
+        served_model: str | None,
+    ) -> None:
+        """Verify the OpenAI model registry after startup. | 启动后校验模型注册表。"""
+
+        expected_model = "reactor-" + str(deployment_id)
+        if execution_ref != str(deployment_id) or served_model != expected_model:
+            raise ServingEngineFailure(
+                "MODEL_IDENTITY_MISMATCH: the serving handle does not match the deployment",
+                execution_ref=execution_ref,
+                endpoint_url=endpoint_url,
+                status=409,
+            )
+        endpoint = urlsplit(endpoint_url)
+        binding = urlsplit(self.binding.control_url)
+        if endpoint.scheme != binding.scheme or endpoint.netloc != binding.netloc:
+            raise ServingEngineFailure(
+                "INFERENCE_ORIGIN_NOT_ADMITTED: the serving endpoint is outside its binding",
+                execution_ref=execution_ref,
+                endpoint_url=endpoint_url,
+                status=409,
+            )
+        try:
+            with httpx.Client(timeout=30, trust_env=False) as client:
+                response = client.get(
+                    endpoint_url.rstrip("/") + "/models",
+                    headers={"Authorization": "Bearer " + self.token},
+                )
+                response.raise_for_status()
+                body = response.json()
+        except httpx.HTTPError as exc:
+            raise ServingEngineFailure(
+                "INFERENCE_DATA_PATH_UNREACHABLE: serving model readback is unavailable",
+                execution_ref=execution_ref,
+                endpoint_url=endpoint_url,
+                status=503,
+                retryable=True,
+            ) from exc
+        except (TypeError, ValueError) as exc:
+            raise ServingEngineFailure(
+                "SERVING_RESPONSE_INCOMPATIBLE: serving model readback is not valid JSON",
+                execution_ref=execution_ref,
+                endpoint_url=endpoint_url,
+                status=409,
+            ) from exc
+
+        data = body.get("data") if isinstance(body, dict) else None
+        if not isinstance(data, list) or not any(
+            isinstance(item, dict) and item.get("id") == expected_model for item in data
+        ):
+            raise ServingEngineFailure(
+                "MODEL_IDENTITY_MISMATCH: /v1/models did not advertise the intended served model",
+                execution_ref=execution_ref,
+                endpoint_url=endpoint_url,
+                status=409,
+            )
 
     def inspect(
         self,
@@ -286,6 +382,43 @@ class RemoteServingExecutionPort:
             AttributeError,
         ):
             return EngineObservation(ready=False, detail="CONTROL_OR_INFERENCE_UNREACHABLE")
+
+    def diagnostics(
+        self, execution_ref: str, *, after_sequence: int = 0, limit: int = 200
+    ) -> dict[str, Any] | None:
+        """Read the serving process output through the binding.
+
+        A binding that cannot answer (older runtime, transient failure) reports
+        None so the Product still returns its own records and marks the page
+        degraded instead of failing the request.
+
+            中文:通过绑定读取服务进程输出。
+
+                中文：若绑定无法响应(例如运行时版本较旧或发生临时故障),则返回 None。
+                Product 仍会返回自身记录,并将页面标记为降级,而不是让请求失败。
+        """
+
+        try:
+            page = self.request(
+                "GET",
+                f"/executions/{execution_ref}/diagnostics"
+                f"?afterSequence={int(after_sequence)}&limit={int(limit)}",
+            )
+        except (ServingEngineFailure, ValueError) as exc:
+            trace = current_diagnostic_trace()
+            sys.stderr.write(
+                format_cyrene_log(
+                    level="WARN",
+                    event_name="reactor.runtime_diagnostics.binding_unavailable",
+                    message="Serving binding could not provide runtime diagnostics",
+                    trace_id=trace[0] if trace else None,
+                    span_id=trace[1] if trace else None,
+                    attributes={"cause_type": type(exc).__name__},
+                )
+                + "\n"
+            )
+            return None
+        return page if isinstance(page.get("items"), list) else None
 
     def stop(
         self,

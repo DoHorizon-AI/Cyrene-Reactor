@@ -64,6 +64,7 @@ def test_send_is_explicit_and_restart_invalidates_previously_inspected_endpoint(
         "https://reactor.example",
     )
     app = create_app(
+        allow_unauthenticated_dev=True,
         database_path=tmp_path / "reactor.sqlite3",
         engines={"admitted": UnitEngine()},
         exchange_receivers={"exchange": receiver},
