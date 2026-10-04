@@ -371,8 +371,16 @@ jobs:
         env:
           PYTHONPATH: platform-tools
           CYRENE_COMPONENT_CATALOG: workspace-catalog/governance/component-catalog-v1.json
-          CYRENE_COMPONENT_CATALOG_SHA256: ${{ steps.catalog.outputs.catalog_sha256 }}
-        run: python -m pytest platform-tools/tooling/release/tests -q
+        run: |
+          set -euo pipefail
+          catalog_sha256="${CATALOG_SHA256#sha256:}"
+          actual_catalog_sha256="$(sha256sum "$CYRENE_COMPONENT_CATALOG" | cut -d ' ' -f 1)"
+          if [[ "$actual_catalog_sha256" != "$catalog_sha256" ]]; then
+            echo "verified Product catalog bytes differ from the release digest" >&2
+            exit 2
+          fi
+          CYRENE_COMPONENT_CATALOG_SHA256="$catalog_sha256" \
+            python -m pytest platform-tools/tooling/release/tests -q
 
       - name: Validate and fetch the Platform SDK from its immutable index
         env:
@@ -882,6 +890,13 @@ jobs:
           immutable="$(gh api "repos/$SOURCE_REPOSITORY/releases/tags/$RELEASE_ID" --jq .immutable)"
           if [[ "$immutable" != true ]]; then echo "GitHub did not mark the release immutable" >&2; exit 2; fi
           echo "id=$release_number" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GitHub Container Registry for published provenance verification
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
 
       - name: Verify published index, manifests, payloads, and real provenance
         run: |
