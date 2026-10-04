@@ -847,12 +847,26 @@ jobs:
               "linux-ubuntu-22.04-x86_64-python-3.12",
               "linux-ubuntu-24.04-x86_64-python-3.12",
           }
+          catalog = json.loads(Path("workspace-catalog/governance/component-catalog-v1.json").read_text(encoding="utf-8"))
+          catalog_targets = {
+              row["id"]: row["target"]
+              for row in catalog["targets"]
+              if row.get("id") in expected
+          }
+          if set(catalog_targets) != expected:
+              raise SystemExit("verified component catalog is missing a required native Product profile")
           python_manifests = []
           for path in manifest_root.glob("*.manifest.json"):
               document = json.loads(path.read_text(encoding="utf-8"))
               if document.get("artifact", {}).get("kind") == "python-bundle":
                   python_manifests.append((path, document))
-          profiles = {document.get("target", {}).get("id") for _, document in python_manifests}
+          profiles = set()
+          for _, document in python_manifests:
+              manifest_target = document.get("target")
+              matches = [profile for profile, target in catalog_targets.items() if manifest_target == target]
+              if len(matches) != 1 or matches[0] in profiles:
+                  raise SystemExit("native Product manifests do not identify two unique catalog targets")
+              profiles.add(matches[0])
           if len(python_manifests) != 2 or profiles != expected:
               raise SystemExit(f"expected one Python bundle manifest for each native profile, got {sorted(profiles)}")
           archives = {path.name for path in artifact_root.glob("*.tar.gz")}
