@@ -825,7 +825,16 @@ jobs:
         env:
           PYTHONPATH: platform-tools
           CYRENE_COMPONENT_CATALOG: workspace-catalog/governance/component-catalog-v1.json
-        run: python -m pytest platform-tools/tooling/release/tests -q
+        run: |
+          set -euo pipefail
+          catalog_sha256="${CATALOG_SHA256#sha256:}"
+          actual_catalog_sha256="$(sha256sum "$CYRENE_COMPONENT_CATALOG" | cut -d ' ' -f 1)"
+          if [[ "$actual_catalog_sha256" != "$catalog_sha256" ]]; then
+            echo "verified Product catalog bytes differ from the release digest" >&2
+            exit 2
+          fi
+          CYRENE_COMPONENT_CATALOG_SHA256="$catalog_sha256" \
+            python -m pytest platform-tools/tooling/release/tests -q
 
       - name: Create and validate one index from both native manifests
         run: |
