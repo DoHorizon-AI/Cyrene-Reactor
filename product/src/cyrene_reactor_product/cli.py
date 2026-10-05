@@ -143,9 +143,12 @@ def _package_binding(
         method = "POST"
         suffix = f"/actions/{command}"
         headers["Idempotency-Key"] = request_id
-        body = {"installationId": installation_id} if command == "activate" else None
-        if command == "activate" and not body["installationId"]:
-            raise SystemExit("PACKAGE_RUNTIME_INSTALLATION_ID_REQUIRED")
+        if command == "activate":
+            if not installation_id:
+                raise SystemExit("PACKAGE_RUNTIME_INSTALLATION_ID_REQUIRED")
+            body = {"installationId": installation_id}
+        else:
+            body = None
     # Print only the safe request identity before making the call so a caller can reconcile it.
     if command != "status":
         print(json.dumps({"requestId": request_id}))
