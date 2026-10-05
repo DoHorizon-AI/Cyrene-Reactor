@@ -22,6 +22,7 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
+from cyrene_reactor_product.logging import emit_diagnostic_error
 from cyrene_reactor_product.remote_engine import (
     RemoteServingExecutionPort,
     ServingBindingConfiguration,
@@ -380,7 +381,18 @@ def _pending_receipt_document(
         ):
             return None
         return document
-    except Exception:
+    except (
+        AttributeError,
+        KeyError,
+        PackageRuntimeOwnerFailure,
+        TypeError,
+        ValueError,
+    ):
+        emit_diagnostic_error(
+            "product.package_runtime.pending_receipt_rejected",
+            "PACKAGE_RUNTIME_PENDING_RECEIPT_INVALID",
+            "The SDK pending receipt could not be validated; owner state remains fail-closed.",
+        )
         return None
 
 

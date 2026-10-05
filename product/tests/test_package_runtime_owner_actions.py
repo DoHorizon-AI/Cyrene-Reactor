@@ -192,6 +192,28 @@ def test_unfinished_intent_is_promoted_to_unknown_on_status_read(tmp_path: Path)
         store.close()
 
 
+def test_malformed_optional_pending_receipt_is_redacted_and_stays_fail_closed(
+    capsys: Any,
+) -> None:
+    class MalformedReceipt:
+        operation_token = "do-not-log-this-secret"
+
+    error = SimpleNamespace(pending_binding_operation=MalformedReceipt())
+    result = owner_module._pending_receipt_document(
+        error,
+        request_id=_REQUEST,
+        source_id="cyrene-reactor",
+        binding_id=_BINDING,
+        installation_id=_INSTALLATION,
+    )
+    log = capsys.readouterr().err
+
+    assert result is None
+    assert "PACKAGE_RUNTIME_PENDING_RECEIPT_INVALID" in log
+    assert "do-not-log-this-secret" not in log
+    assert "operation_token" not in log
+
+
 @pytest.mark.parametrize("already_in_flight", [False, True])
 def test_real_sdk_typed_pending_receipt_is_saved_and_reconciled_without_activate_replay(
     tmp_path: Path, already_in_flight: bool

@@ -36,6 +36,14 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - name: Check out the exact canonical Package Runtime SDK revision
+        uses: actions/checkout@v5
+        with:
+          repository: DoHorizon-AI/Cyrene-Platform
+          ref: 35115e02fa4f07302af412ed9f3213a84488a665
+          path: .ci/cyrene-platform-sdk
+          fetch-depth: 1
+          persist-credentials: false
       - name: Set up Python 3.12
         uses: actions/setup-python@v6
         with:
@@ -44,11 +52,38 @@ jobs:
         run: python -m pip install --disable-pip-version-check uv==0.12.3
       - run: python -m json.tool ../service.json >/dev/null
       - run: python ../scripts/check_silent_exceptions.py
+      - name: Verify the Package Runtime SDK checkout is exact
+        run: |
+          test "$(git -C ../.ci/cyrene-platform-sdk rev-parse HEAD)" = "35115e02fa4f07302af412ed9f3213a84488a665"
+          test -f ../.ci/cyrene-platform-sdk/sdk/python/cyrene_runtime_maintenance/src/cyrene_runtime_maintenance/package_runtime.py
       - run: uv sync --frozen --group dev
+      - name: Require the checked-out Package Runtime SDK
+        env:
+          PLATFORM_RUNTIME_SDK_SOURCE: ${{ github.workspace }}/.ci/cyrene-platform-sdk/sdk/python/cyrene_runtime_maintenance/src
+          PYTHONPATH: ${{ github.workspace }}/.ci/cyrene-platform-sdk/sdk/python/cyrene_runtime_maintenance/src
+        run: |
+          uv run --locked python - <<'PY'
+          import os
+          from pathlib import Path
+
+          import cyrene_runtime_maintenance as sdk
+
+          expected_source = Path(os.environ["PLATFORM_RUNTIME_SDK_SOURCE"]).resolve()
+          actual_package = Path(sdk.__file__).resolve()
+          if actual_package.parent != expected_source / "cyrene_runtime_maintenance":
+              raise SystemExit(f"unexpected Package Runtime SDK import: {actual_package}")
+          if not callable(getattr(sdk.PackageRuntimeClient, "reconcile_binding_operation_and_persist", None)):
+              raise SystemExit("checked-out Package Runtime SDK is missing owner reconciliation support")
+          print(f"Using Package Runtime SDK from {actual_package}")
+          PY
       - run: uv run ruff check src tests
       - run: uv run ruff format --check src tests
       - run: uv run mypy
-      - run: uv run pytest -q
+      - name: Run Product tests with the checked-out SDK
+        env:
+          PLATFORM_RUNTIME_SDK_SOURCE: ${{ github.workspace }}/.ci/cyrene-platform-sdk/sdk/python/cyrene_runtime_maintenance/src
+          PYTHONPATH: ${{ github.workspace }}/.ci/cyrene-platform-sdk/sdk/python/cyrene_runtime_maintenance/src
+        run: uv run pytest -q
       - run: uv run openapi-spec-validator ../contracts/product/v1/openapi.yaml
 
   product-native-build:
