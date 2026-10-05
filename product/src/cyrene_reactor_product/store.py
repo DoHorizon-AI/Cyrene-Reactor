@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from datetime import datetime
 from pathlib import Path
@@ -34,7 +35,7 @@ class ReactorStore:
     """Durable Product store independent of engine and Kernel state. | 产品权威存储。"""
 
     def __init__(self, database_path: Path) -> None:
-        database_path.parent.mkdir(parents=True, exist_ok=True)
+        database_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         self._connection = sqlite3.connect(database_path, check_same_thread=False)
         self._connection.row_factory = sqlite3.Row
         self._lock = RLock()
@@ -101,9 +102,181 @@ class ReactorStore:
                     deployment_id TEXT PRIMARY KEY,
                     runtime_sequence INTEGER NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS package_runtime_owner_operations (
+                    request_id TEXT PRIMARY KEY,
+                    binding_id TEXT NOT NULL,
+                    package_id TEXT NOT NULL,
+                    installation_id TEXT NOT NULL,
+                    operation TEXT NOT NULL,
+                    phase TEXT NOT NULL,
+                    runtime_status_json TEXT,
+                    receipt_json TEXT,
+                    updated_at TEXT NOT NULL
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_package_runtime_owner_pending_binding
+                ON package_runtime_owner_operations(binding_id)
+                WHERE phase IN ('INTENT', 'UNKNOWN', 'RECEIPT_PENDING');
                 """
             )
             self._migrate_execution_evidence()
+        # Product state and the opaque broker receipt are process-private.
+        directory_stat = database_path.parent.stat()
+        if directory_stat.st_uid == os.geteuid() and not directory_stat.st_mode & 0o1000:
+            os.chmod(database_path.parent, 0o700)
+        os.chmod(database_path, 0o600)
+        wal_path = Path(f"{database_path}-wal")
+        if wal_path.exists():
+            os.chmod(wal_path, 0o600)
+
+    def package_runtime_operation(self, request_id: str) -> dict[str, object] | None:
+        """Load the private lifecycle record without projecting its receipt."""
+
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT request_id, binding_id, package_id, installation_id, operation, phase, "
+                "runtime_status_json, receipt_json FROM package_runtime_owner_operations "
+                "WHERE request_id = ?",
+                (request_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "request_id": row["request_id"],
+            "binding_id": row["binding_id"],
+            "package_id": row["package_id"],
+            "installation_id": row["installation_id"],
+            "operation": row["operation"],
+            "phase": row["phase"],
+            "runtime_status": json.loads(row["runtime_status_json"])
+            if row["runtime_status_json"]
+            else None,
+            "receipt": json.loads(row["receipt_json"]) if row["receipt_json"] else None,
+        }
+
+    def pending_package_runtime_operation(self, binding_id: str) -> dict[str, object] | None:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT request_id FROM package_runtime_owner_operations "
+                "WHERE binding_id = ? AND phase IN ('INTENT', 'UNKNOWN', 'RECEIPT_PENDING')",
+                (binding_id,),
+            ).fetchone()
+        return self.package_runtime_operation(row["request_id"]) if row else None
+
+    def latest_package_runtime_operation(self, binding_id: str) -> dict[str, object] | None:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT request_id FROM package_runtime_owner_operations "
+                "WHERE binding_id = ? ORDER BY updated_at DESC, rowid DESC LIMIT 1",
+                (binding_id,),
+            ).fetchone()
+        return self.package_runtime_operation(row["request_id"]) if row else None
+
+    def create_package_runtime_intent(
+        self, request_id: str, binding_id: str, package_id: str, installation_id: str
+    ) -> dict[str, object]:
+        """Commit an exact scope before any PackageRuntime mutation is dispatched."""
+
+        with self._lock, self._connection:
+            existing = self._connection.execute(
+                "SELECT request_id, binding_id, package_id, installation_id, operation, phase, "
+                "runtime_status_json, receipt_json FROM package_runtime_owner_operations "
+                "WHERE request_id = ?",
+                (request_id,),
+            ).fetchone()
+            if existing is not None:
+                existing_scope = (
+                    existing["binding_id"],
+                    existing["package_id"],
+                    existing["installation_id"],
+                    existing["operation"],
+                )
+                if existing_scope != (
+                    binding_id,
+                    package_id,
+                    installation_id,
+                    "activate",
+                ):
+                    raise ValueError("PACKAGE_RUNTIME_REQUEST_SCOPE_CONFLICT")
+                return self.package_runtime_operation(request_id) or {}
+            pending = self._connection.execute(
+                "SELECT request_id FROM package_runtime_owner_operations "
+                "WHERE binding_id = ? AND phase IN ('INTENT', 'UNKNOWN', 'RECEIPT_PENDING')",
+                (binding_id,),
+            ).fetchone()
+            if pending is not None:
+                raise ValueError("PACKAGE_RUNTIME_BINDING_OPERATION_PENDING")
+            self._connection.execute(
+                "INSERT INTO package_runtime_owner_operations"
+                "(request_id, binding_id, package_id, installation_id, operation, "
+                "phase, updated_at) "
+                "VALUES (?, ?, ?, ?, 'activate', 'INTENT', ?)",
+                (
+                    request_id,
+                    binding_id,
+                    package_id,
+                    installation_id,
+                    datetime.now().astimezone().isoformat(),
+                ),
+            )
+            return self.package_runtime_operation(request_id) or {}
+
+    def mark_package_runtime_unknown(self, request_id: str) -> None:
+        with self._lock, self._connection:
+            self._connection.execute(
+                "UPDATE package_runtime_owner_operations SET phase='UNKNOWN', updated_at=? "
+                "WHERE request_id=? AND phase='INTENT' AND receipt_json IS NULL",
+                (datetime.now().astimezone().isoformat(), request_id),
+            )
+
+    def persist_package_runtime_receipt(self, request_id: str, receipt: dict[str, object]) -> None:
+        """Save a typed Gate receipt returned with a pending-operation error."""
+
+        with self._lock, self._connection:
+            cursor = self._connection.execute(
+                "UPDATE package_runtime_owner_operations SET phase='RECEIPT_PENDING', "
+                "receipt_json=?, updated_at=? WHERE request_id=? "
+                "AND phase IN ('INTENT', 'UNKNOWN') AND receipt_json IS NULL",
+                (
+                    json.dumps(receipt, separators=(",", ":")),
+                    datetime.now().astimezone().isoformat(),
+                    request_id,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("PACKAGE_RUNTIME_INTENT_NOT_PENDING")
+
+    def commit_package_runtime_outcome(
+        self, request_id: str, runtime_status: dict[str, object], receipt: dict[str, object]
+    ) -> None:
+        """Atomically persist actual binding status and the private opaque receipt."""
+
+        with self._lock, self._connection:
+            row = self._connection.execute(
+                "SELECT phase FROM package_runtime_owner_operations WHERE request_id=?",
+                (request_id,),
+            ).fetchone()
+            if row is None or row["phase"] not in {"INTENT", "UNKNOWN", "RECEIPT_PENDING"}:
+                raise ValueError("PACKAGE_RUNTIME_INTENT_NOT_PENDING")
+            self._connection.execute(
+                "UPDATE package_runtime_owner_operations SET phase='RECEIPT_PENDING', "
+                "runtime_status_json=?, receipt_json=?, updated_at=? WHERE request_id=?",
+                (
+                    json.dumps(runtime_status, separators=(",", ":")),
+                    json.dumps(receipt, separators=(",", ":")),
+                    datetime.now().astimezone().isoformat(),
+                    request_id,
+                ),
+            )
+
+    def complete_package_runtime_operation(self, request_id: str) -> None:
+        with self._lock, self._connection:
+            cursor = self._connection.execute(
+                "UPDATE package_runtime_owner_operations SET phase='COMPLETED', updated_at=? "
+                "WHERE request_id=? AND phase='RECEIPT_PENDING' AND receipt_json IS NOT NULL",
+                (datetime.now().astimezone().isoformat(), request_id),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("PACKAGE_RUNTIME_RECEIPT_NOT_PERSISTED")
 
     def _migrate_execution_evidence(self) -> None:
         """Move legacy public execution refs into the private evidence table.
