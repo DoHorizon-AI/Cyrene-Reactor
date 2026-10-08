@@ -12,16 +12,19 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import secrets
 from pathlib import Path
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
+import httpx
 import uvicorn
 
 from cyrene_reactor_product.api import create_app
 from cyrene_reactor_product.engine import ServingExecutionPort
 from cyrene_reactor_product.exchange_handoff import ExchangeHandoff, ExchangeReceiverConfiguration
+from cyrene_reactor_product.package_runtime_owner import package_runtime_engine
 from cyrene_reactor_product.remote_engine import (
     RemoteServingExecutionPort,
     ServingBindingConfiguration,
@@ -42,15 +45,33 @@ def _configuration(path: Path) -> dict[str, Any]:
 
 
 def _engines(configuration: dict[str, Any]) -> dict[str, ServingExecutionPort]:
-    """Build one remote serving port per configured binding.
+    """Build static or owner-resolved serving ports for configured bindings.
 
-    中文:为每个已配置绑定构建一个远程服务端口。"""
+    PackageRuntime entries are resolved only from their authenticated runtime
+    receipt. A configured package binding that cannot be admitted fails startup
+    and never falls back to a static URL.
+
+    中文:静态绑定保持兼容;包绑定只能由授权回执解析,失败时不回退。
+    """
 
     bindings = [
         ServingBindingConfiguration.model_validate(item)
-        for item in configuration["serving_bindings"]
+        for item in configuration.get("serving_bindings", [])
     ]
-    return {binding.binding_id: RemoteServingExecutionPort(binding) for binding in bindings}
+    engines: dict[str, ServingExecutionPort] = {
+        binding.binding_id: RemoteServingExecutionPort(binding) for binding in bindings
+    }
+    if "package_runtime_bindings" not in configuration:
+        return engines
+
+    package_bindings = configuration["package_runtime_bindings"]
+    if not isinstance(package_bindings, dict) or not package_bindings:
+        raise ValueError("REACTOR_PACKAGE_RUNTIME_BINDINGS_INVALID")
+    for binding_id, owner_configuration in package_bindings.items():
+        if binding_id in engines:
+            raise ValueError("REACTOR_PACKAGE_RUNTIME_BINDING_DUPLICATE")
+        engines[binding_id] = package_runtime_engine(binding_id, owner_configuration)
+    return engines
 
 
 def _service(configuration: dict[str, Any]) -> ReactorService:
@@ -97,6 +118,73 @@ def _deployment_stop(configuration: dict[str, Any], deployment_id: UUID) -> int:
     return 0
 
 
+def _package_binding(
+    configuration: dict[str, Any],
+    command: str,
+    request_id: str | None,
+    installation_id: str | None = None,
+) -> int:
+    """Forward an owner lifecycle command to the authenticated Reactor API."""
+
+    binding_id = os.environ.get("REACTOR_PACKAGE_RUNTIME_BINDING_ID", "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9][a-z0-9_.-]{1,127}", binding_id):
+        raise SystemExit("PACKAGE_RUNTIME_BINDING_NOT_CONFIGURED")
+    request_id = request_id or str(uuid4())
+    base_url = str(configuration.get("control_url", "http://127.0.0.1:19300")).rstrip("/")
+    credential_path = Path(configuration["credential_file"])
+    token = credential_path.read_text(encoding="utf-8").strip()
+    if len(token) < 32 or credential_path.stat().st_mode & 0o077:
+        raise SystemExit("REACTOR_CONTROL_AUTH_UNAVAILABLE")
+    url = f"{base_url}/api/v1/runtime-bindings/{binding_id}"
+    headers = {"Authorization": f"Bearer {token}"}
+    if command == "status":
+        method, suffix, body = "GET", "", None
+    else:
+        method = "POST"
+        suffix = f"/actions/{command}"
+        headers["Idempotency-Key"] = request_id
+        if command == "activate":
+            if not installation_id:
+                raise SystemExit("PACKAGE_RUNTIME_INSTALLATION_ID_REQUIRED")
+            body = {"installationId": installation_id}
+        else:
+            body = None
+    # Print only the safe request identity before making the call so a caller can reconcile it.
+    if command != "status":
+        print(json.dumps({"requestId": request_id}))
+    try:
+        response = httpx.request(method, url + suffix, headers=headers, json=body, timeout=30.0)
+    except httpx.HTTPError:
+        print(
+            json.dumps(
+                {"requestId": request_id, "phase": "UNKNOWN", "code": "REACTOR_API_UNAVAILABLE"}
+            )
+        )
+        return 2
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = {"code": "REACTOR_API_RESPONSE_INVALID"}
+    if isinstance(payload, dict):
+        safe_payload = {
+            key: payload[key]
+            for key in (
+                "bindingId",
+                "requestId",
+                "installationId",
+                "phase",
+                "blocked",
+                "runtimeState",
+                "code",
+            )
+            if key in payload and isinstance(payload[key], (str, int, float, bool, type(None)))
+        }
+    else:
+        safe_payload = {"code": "REACTOR_API_RESPONSE_INVALID"}
+    print(json.dumps(safe_payload, indent=2))
+    return 0 if response.is_success else 2
+
+
 def parser() -> argparse.ArgumentParser:
     value = argparse.ArgumentParser(description="Reactor Product controller")
     commands = value.add_subparsers(dest="mode", required=True)
@@ -117,6 +205,17 @@ def parser() -> argparse.ArgumentParser:
     deployment_commands.add_parser("list")
     stop = deployment_commands.add_parser("stop")
     stop.add_argument("--deployment-id", required=True, type=UUID)
+
+    package_binding = commands.add_parser(
+        "package-binding", help="Manage the configured PackageRuntime binding"
+    )
+    package_binding.add_argument("--config", required=True, type=Path)
+    package_commands = package_binding.add_subparsers(dest="package_binding_command", required=True)
+    activate = package_commands.add_parser("activate")
+    activate.add_argument("--installation-id", required=True)
+    reconcile = package_commands.add_parser("reconcile")
+    reconcile.add_argument("--request-id", required=True)
+    package_commands.add_parser("status")
     return value
 
 
@@ -132,6 +231,16 @@ def main() -> None:
         print("Created the private Product credential; no secret value was printed.")
         return
     configuration = _configuration(args.config)
+    if args.mode == "package-binding":
+        request_id = getattr(args, "request_id", None)
+        raise SystemExit(
+            _package_binding(
+                configuration,
+                args.package_binding_command,
+                request_id,
+                getattr(args, "installation_id", None),
+            )
+        )
     if args.mode == "deployment":
         if args.deployment_command == "list":
             raise SystemExit(_deployment_list(configuration))

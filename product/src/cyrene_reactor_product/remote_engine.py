@@ -9,6 +9,8 @@
 
 from __future__ import annotations
 
+import os
+import stat
 import sys
 from pathlib import Path
 from typing import Any
@@ -83,11 +85,19 @@ def _canonical_expected_model_version(
 class RemoteServingExecutionPort:
     """Support physically separate Product control and CUDA execution hosts. | 远程服务端口。"""
 
-    def __init__(self, binding: ServingBindingConfiguration) -> None:
+    def __init__(
+        self,
+        binding: ServingBindingConfiguration,
+        *,
+        require_owner_protected_credential: bool = False,
+    ) -> None:
         self.binding = binding
-        self.token = binding.credential_file.read_text().strip()
-        if len(self.token) < 32 or binding.credential_file.stat().st_mode & 0o077:
-            raise ValueError("SERVING_CREDENTIAL_INVALID")
+        if require_owner_protected_credential:
+            self.token = _read_owner_protected_credential(binding.credential_file)
+        else:
+            self.token = binding.credential_file.read_text().strip()
+            if len(self.token) < 32 or binding.credential_file.stat().st_mode & 0o077:
+                raise ValueError("SERVING_CREDENTIAL_INVALID")
         parsed = urlsplit(binding.control_url)
         if parsed.username or parsed.password or parsed.query or parsed.fragment:
             raise ValueError("SERVING_URL_INVALID")
@@ -448,3 +458,39 @@ class RemoteServingExecutionPort:
         if result.get("released") is not True:
             raise ServingEngineFailure("KERNEL_CLEANUP_INCOMPLETE")
         return EngineObservation(ready=False, detail="KERNEL_RESOURCES_RELEASED")
+
+
+def _read_owner_protected_credential(path: Path) -> str:
+    """Read one private bearer file without following links or accepting shared ownership.
+
+    中文:安全读取 owner 专用 bearer 文件,拒绝符号链接及共享权限。
+    """
+
+    no_follow = getattr(os, "O_NOFOLLOW", None)
+    if no_follow is None:
+        raise ValueError("SERVING_CREDENTIAL_INVALID")
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(
+            path,
+            os.O_RDONLY | os.O_CLOEXEC | os.O_NONBLOCK | no_follow,
+        )
+        metadata = os.fstat(descriptor)
+        permissions = stat.S_IMODE(metadata.st_mode)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or permissions not in {0o400, 0o600}
+            or metadata.st_uid not in {os.geteuid(), 0}
+        ):
+            raise ValueError("SERVING_CREDENTIAL_INVALID")
+        with os.fdopen(descriptor, "r", encoding="utf-8") as credential:
+            descriptor = None
+            token = credential.read().strip()
+    except (OSError, UnicodeError) as exc:
+        raise ValueError("SERVING_CREDENTIAL_INVALID") from exc
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+    if len(token) < 32:
+        raise ValueError("SERVING_CREDENTIAL_INVALID")
+    return token

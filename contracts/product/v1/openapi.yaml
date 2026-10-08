@@ -6,6 +6,127 @@ info:
   license:
     name: Apache-2.0
 paths:
+  /api/v1/runtime-bindings/{binding_id}:
+    get:
+      operationId: package_runtime_status_api_v1_runtime_bindings__binding_id__get
+      summary: Package Runtime Status
+      description: >-
+        Returns the Reactor Product owner's durable status for its configured
+        Package Runtime binding. This local API requires Reactor ControlBearer
+        authorization; callers do not provide Package Runtime source credentials.
+      security:
+      - ControlBearer: []
+      parameters:
+      - name: binding_id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Durable owner binding status without connection references or receipts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PackageRuntimeBindingStatus'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+  /api/v1/runtime-bindings/{binding_id}/actions/activate:
+    post:
+      operationId: activate_package_runtime_api_v1_runtime_bindings__binding_id__actions_activate_post
+      summary: Activate Package Runtime
+      description: >-
+        Activates the configured package for the supplied installed installation
+        through the Reactor Product owner. Requires the local Reactor ControlBearer.
+        Package Runtime source identity and credentials are server-owned and are
+        never accepted from the caller.
+      security:
+      - ControlBearer: []
+      parameters:
+      - name: binding_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: Idempotency-Key
+        in: header
+        required: true
+        description: Stable caller request identity used by the Product owner.
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 128
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActivatePackageRuntimeRequest'
+      responses:
+        '200':
+          description: Durable owner binding status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PackageRuntimeBindingStatus'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '502':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+  /api/v1/runtime-bindings/{binding_id}/actions/reconcile:
+    post:
+      operationId: reconcile_package_runtime_api_v1_runtime_bindings__binding_id__actions_reconcile_post
+      summary: Reconcile Package Runtime
+      description: >-
+        Reconciles the receipt already held in the Reactor Product owner database
+        for the supplied request identity. The caller cannot supply a receipt,
+        operation token, source identity, or runtime connection reference.
+        Requires the local Reactor ControlBearer.
+      security:
+      - ControlBearer: []
+      parameters:
+      - name: binding_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: Idempotency-Key
+        in: header
+        required: true
+        description: Request identity whose private owner receipt will be reconciled.
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 128
+      responses:
+        '200':
+          description: Durable owner binding status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PackageRuntimeBindingStatus'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
   /api/v1/deployments:
     post:
       operationId: createDeployment
@@ -539,6 +660,38 @@ components:
           schema:
             $ref: ./generated/common/problem-details.schema.json
   schemas:
+    ActivatePackageRuntimeRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - installationId
+      properties:
+        installationId:
+          type: string
+          minLength: 1
+          maxLength: 256
+      description: The caller-supplied identity of an already installed package.
+    PackageRuntimeBindingStatus:
+      type: object
+      additionalProperties: false
+      required:
+      - bindingId
+      - phase
+      properties:
+        bindingId:
+          type: string
+        requestId:
+          type: string
+        installationId:
+          type: string
+        phase:
+          type: string
+          enum: [NOT_CONFIGURED, INTENT, UNKNOWN, RECEIPT_PENDING, COMPLETED]
+        blocked:
+          type: boolean
+        runtimeState:
+          type: [string, 'null']
+          enum: [RUNNING, STOPPED, FAILED, null]
     CreateDeploymentRequest:
       properties:
         name:

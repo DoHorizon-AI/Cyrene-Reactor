@@ -14,7 +14,7 @@ import hashlib
 import secrets
 from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID, uuid4
 
 import anyio
@@ -23,6 +23,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi import Path as ApiPath
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response, StreamingResponse
+from pydantic import BaseModel, ConfigDict, Field
 
 from cyrene_reactor_product.domain import (
     CreateDeploymentDraft,
@@ -55,6 +56,11 @@ from cyrene_reactor_product.logging import (
     parse_w3c_traceparent,
     sanitize_request_id,
 )
+from cyrene_reactor_product.package_runtime_owner import (
+    PackageRuntimeOwner,
+    PackageRuntimeOwnerFailure,
+    package_runtime_owner_from_environment,
+)
 from cyrene_reactor_product.remote_engine import RemoteServingExecutionPort
 from cyrene_reactor_product.service import ReactorService
 from cyrene_reactor_product.store import ReactorStore
@@ -68,6 +74,13 @@ from cyrene_reactor_product.workspace_projection import (
 )
 
 
+class ActivatePackageRuntimeRequest(BaseModel):
+    """Only the caller's concrete installation identity is accepted."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    installation_id: str = Field(alias="installationId", min_length=1, max_length=256)
+
+
 def create_app(
     *,
     database_path: Path,
@@ -78,6 +91,7 @@ def create_app(
     workspace_serving_binding_grants_json: str | None = None,
     allow_unauthenticated_dev: bool = False,
     exchange_receivers: dict[str, ExchangeHandoff] | None = None,
+    package_runtime_owner: PackageRuntimeOwner | None = None,
 ) -> FastAPI:
     """Build Reactor with explicit Product and serving adapters. | 创建 Reactor 产品应用。"""
 
@@ -86,6 +100,8 @@ def create_app(
         workspace_serving_binding_grants_json
     )
     store = ReactorStore(database_path)
+    if package_runtime_owner is None:
+        package_runtime_owner = package_runtime_owner_from_environment(store)
     serving_engine = engine or UnconfiguredServingExecutionPort()
     service = ReactorService(
         store=store,
@@ -99,6 +115,14 @@ def create_app(
 
     def authorize(request: Request) -> None:
         if request.url.path in {"/healthz", "/readyz", "/"}:
+            return
+        if request.url.path.startswith("/api/v1/runtime-bindings/"):
+            if token is None:
+                raise HTTPException(503, "REACTOR_CONTROL_AUTH_UNAVAILABLE")
+            if not secrets.compare_digest(
+                request.headers.get("authorization", ""), "Bearer " + token
+            ):
+                raise HTTPException(403, "REACTOR_PERMISSION_DENIED")
             return
         if workspace_auth.protects(request.url.path):
             workspace_auth.authorize(request)
@@ -123,6 +147,7 @@ def create_app(
     app.state.reactor_store = store
     app.state.reactor_engine = serving_engine
     app.state.reactor_service = service
+    app.state.package_runtime_owner = package_runtime_owner
     app.router.on_shutdown.append(service.close)
 
     @app.middleware("http")
@@ -575,6 +600,53 @@ def create_app(
         return service.restart_deployment(deployment_id, command.node_ref, command.resource_version)
 
     configured_engines = engines or {}
+
+    def require_package_owner(binding_id: str) -> PackageRuntimeOwner:
+        owner = package_runtime_owner
+        if owner is None or binding_id != owner.binding_id:
+            raise HTTPException(404, "PACKAGE_RUNTIME_BINDING_NOT_CONFIGURED")
+        return owner
+
+    def package_owner_error(error: PackageRuntimeOwnerFailure) -> HTTPException:
+        return HTTPException(error.status, error.code)
+
+    @app.post(
+        "/api/v1/runtime-bindings/{binding_id}/actions/activate",
+        status_code=200,
+    )
+    def activate_package_runtime(
+        binding_id: str,
+        command: ActivatePackageRuntimeRequest,
+        idempotency_key: Annotated[
+            str, Header(alias="Idempotency-Key", min_length=1, max_length=128)
+        ],
+    ) -> dict[str, Any]:
+        owner = require_package_owner(binding_id)
+        try:
+            return owner.activate(idempotency_key, command.installation_id)
+        except PackageRuntimeOwnerFailure as error:
+            raise package_owner_error(error) from None
+
+    @app.post("/api/v1/runtime-bindings/{binding_id}/actions/reconcile")
+    async def reconcile_package_runtime(
+        binding_id: str,
+        idempotency_key: Annotated[
+            str, Header(alias="Idempotency-Key", min_length=1, max_length=128)
+        ],
+        request: Request,
+    ) -> dict[str, Any]:
+        if await request.body():
+            raise HTTPException(422, "PACKAGE_RUNTIME_RECONCILE_BODY_NOT_ACCEPTED")
+        owner = require_package_owner(binding_id)
+        try:
+            return owner.reconcile(idempotency_key)
+        except PackageRuntimeOwnerFailure as error:
+            raise package_owner_error(error) from None
+
+    @app.get("/api/v1/runtime-bindings/{binding_id}")
+    def package_runtime_status(binding_id: str) -> dict[str, Any]:
+        owner = require_package_owner(binding_id)
+        return owner.status()
 
     def remote(binding_id: str) -> RemoteServingExecutionPort:
         selected = configured_engines.get(binding_id)
