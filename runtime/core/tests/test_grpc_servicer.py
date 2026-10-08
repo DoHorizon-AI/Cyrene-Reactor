@@ -18,7 +18,7 @@ from unittest.mock import Mock, MagicMock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from cy_exec.config.models import WorkerConfig
+from cy_exec.config.models import ModelSpec, WorkerConfig
 from cy_exec.core.telemetry import Telemetry
 from cy_exec.proto.ai_service_pb2 import WorkerHealthRequest
 
@@ -61,6 +61,16 @@ class TestGRPCServicer:
         request.metadata.trace_id = "test-trace-id"
         request.generation = None
 
+        servicer._config = WorkerConfig(
+            provider_id="cyrene.engines.fixture",
+            model_registry={
+                "test-model": ModelSpec(
+                    model_path="/valid/model",
+                    provider_id="cyrene.engines.fixture",
+                )
+            },
+        )
+
         # 创建一个迭代器包装请求
         request_iterator = iter([request])
 
@@ -68,14 +78,12 @@ class TestGRPCServicer:
         context.invocation_metadata = Mock(return_value=[])
         context.abort = Mock()
 
-        # StreamPredict 期望一个请求迭代器
-        try:
+        with patch("cy_exec.grpc_servicer._verify_internal_token", return_value=True):
             responses = list(servicer.StreamPredict(request_iterator, context))
-            # 应该有响应或者调用了 abort
-            assert len(responses) >= 0 or context.abort.called
-        except Exception:
-            # 可能抛出异常（如模型不存在），这也是预期行为
-            pass
+
+        assert responses
+        mock_server.stream_predict.assert_called_once()
+        assert mock_server.stream_predict.call_args.kwargs["trace_id"] == "test-trace-id"
 
     def test_authentication_required(self, servicer):
         """需要认证时应验证 token"""

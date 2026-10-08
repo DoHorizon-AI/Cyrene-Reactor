@@ -112,6 +112,20 @@ class TestGracefulShutdown:
 
         mock_server.stop.assert_called()
 
+    def test_graceful_shutdown_logs_failure(self, caplog):
+        """Shutdown failures keep a diagnostic without exposing exception details."""
+        from cy_exec.main import graceful_shutdown
+
+        mock_server = MagicMock()
+        mock_server.stop.side_effect = RuntimeError("private path")
+
+        with caplog.at_level("WARNING", logger="cy_llm.worker"):
+            graceful_shutdown(mock_server, timeout=5)
+
+        mock_server.stop.assert_called_once_with(grace=5)
+        assert "RuntimeError" in caplog.text
+        assert "private path" not in caplog.text
+
 
 class TestHealthCheck:
     """测试健康检查"""

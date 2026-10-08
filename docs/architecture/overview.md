@@ -54,3 +54,48 @@ Platform placement.
 - Platform 负责通用进程生命周期、资源租约与标准硬件事实。
 - Exchange 负责公共网关行为与客户端协议认证。
 - Yield 负责训练与微调；Echo 负责评估与评分。
+---
+<!-- Chinese Translation / 中文翻译 -->
+
+# Reactor 架构概览
+
+## 角色与边界
+
+Reactor 将获准的模型 Artifact 转换为服务工作器。它负责 Product 服务语义——部署状态、就绪、有界请求调度、流式输出、背压、已加载模型驻留和优雅排空；Platform 负责通用执行底座、放置、lease 和节点事实。
+
+## 运行时拓扑
+
+```mermaid
+flowchart LR
+    Client["Exchange / 客户端"] --> API["gRPC / HTTP 服务 API"]
+    API --> Server["InferenceServer / 推理服务"]
+    Server --> Scheduler["TaskScheduler / 任务调度器"]
+    Scheduler --> Port["execution.engine.v1 执行能力端口"]
+    Port --> Plugin["Plugins 所有的引擎：vLLM / TRT / MindIE"]
+    Server --> Health["健康与指标"]
+    Server --> Artifacts["模型 Artifact"]
+    Platform["Platform 放置、lease 与硬件事实"] -.约束.-> Server
+    Placement["host-placement 主机放置适配器"] --> Platform
+```
+
+树内 Python 运行时是请求行为的 Product 权威。它不包含引擎、prompt cache、KV-cache 管理器、拓扑调度器或硬件探测。保留的 Rust 组件只负责将 Reactor 输入适配到 Platform 放置接口。
+
+## 服务生命周期
+
+| 状态 | 含义 | 关键边界 |
+|---|---|---|
+| `CREATED` | 服务及协调对象已创建 | 尚未接受流量 |
+| `CONFIGURED` | 配置和注册表输入已通过验证 | 已知模型要求 |
+| `LOADING` | 正在准备权重和引擎 | 失败时必须释放引擎资源 |
+| `READY` | 模型已加载且健康状态正常 | 可以准入请求 |
+| `SERVING` | 请求正在排队并以流式方式返回 | 应用背压和超时 |
+| `DRAINING` | 拒绝新流量并完成存量任务 | 释放句柄与工作器 |
+| `STOPPED` | 服务资源已关闭 | 不得启动新任务 |
+
+## 所有权边界
+
+- Reactor 负责部署/端点状态、服务策略、工作器内有界请求调度、工作器控制和已加载模型驻留。
+- 引擎提供方负责具体推理执行与引擎专属缓存基础设施。
+- Platform 负责通用进程生命周期、资源 lease 和规范硬件事实。
+- Exchange 负责公共网关行为和客户端协议认证。
+- Yield 负责训练与微调；Echo 负责评估与评分。

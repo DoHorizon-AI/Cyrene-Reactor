@@ -11,12 +11,23 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 from threading import RLock
 from uuid import UUID
 
-from cyrene_reactor_product.domain import Deployment, DeploymentDraft, Endpoint
+from cyrene_reactor_product.domain import (
+    Deployment,
+    DeploymentDraft,
+    DeploymentEvent,
+    DeploymentPhase,
+    Endpoint,
+    ModelImport,
+    ModelImportState,
+    ObservedState,
+)
 from cyrene_reactor_product.errors import ReactorProductError
 
 
@@ -24,7 +35,7 @@ class ReactorStore:
     """Durable Product store independent of engine and Kernel state. | 产品权威存储。"""
 
     def __init__(self, database_path: Path) -> None:
-        database_path.parent.mkdir(parents=True, exist_ok=True)
+        database_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         self._connection = sqlite3.connect(database_path, check_same_thread=False)
         self._connection.row_factory = sqlite3.Row
         self._lock = RLock()
@@ -49,6 +60,17 @@ class ReactorStore:
                     deployment_id TEXT PRIMARY KEY,
                     execution_ref TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS model_imports (
+                    id TEXT PRIMARY KEY,
+                    document TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS model_import_scopes (
+                    id TEXT PRIMARY KEY,
+                    organization_id TEXT NOT NULL,
+                    workspace_id TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_model_import_scopes_scope
+                ON model_import_scopes(organization_id, workspace_id);
                 CREATE TABLE IF NOT EXISTS idempotency (
                     scope TEXT NOT NULL,
                     key TEXT NOT NULL,
@@ -56,9 +78,205 @@ class ReactorStore:
                     resource_id TEXT NOT NULL,
                     PRIMARY KEY(scope, key)
                 );
+                CREATE TABLE IF NOT EXISTS deployment_events (
+                    deployment_id TEXT NOT NULL,
+                    sequence INTEGER NOT NULL,
+                    phase TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    occurred_at TEXT NOT NULL,
+                    failure_code TEXT,
+                    PRIMARY KEY(deployment_id, sequence)
+                );
+                CREATE INDEX IF NOT EXISTS idx_deployment_events_id
+                    ON deployment_events(deployment_id);
+                CREATE TABLE IF NOT EXISTS deployment_diagnostics (
+                    deployment_id TEXT NOT NULL,
+                    record_index INTEGER NOT NULL,
+                    sequence INTEGER NOT NULL,
+                    document TEXT NOT NULL,
+                    PRIMARY KEY(deployment_id, record_index)
+                );
+                CREATE INDEX IF NOT EXISTS idx_deployment_diagnostics_sequence
+                    ON deployment_diagnostics(deployment_id, sequence);
+                CREATE TABLE IF NOT EXISTS deployment_diagnostics_cursors (
+                    deployment_id TEXT PRIMARY KEY,
+                    runtime_sequence INTEGER NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS package_runtime_owner_operations (
+                    request_id TEXT PRIMARY KEY,
+                    binding_id TEXT NOT NULL,
+                    package_id TEXT NOT NULL,
+                    installation_id TEXT NOT NULL,
+                    operation TEXT NOT NULL,
+                    phase TEXT NOT NULL,
+                    runtime_status_json TEXT,
+                    receipt_json TEXT,
+                    updated_at TEXT NOT NULL
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_package_runtime_owner_pending_binding
+                ON package_runtime_owner_operations(binding_id)
+                WHERE phase IN ('INTENT', 'UNKNOWN', 'RECEIPT_PENDING');
                 """
             )
             self._migrate_execution_evidence()
+        # Product state and the opaque broker receipt are process-private.
+        directory_stat = database_path.parent.stat()
+        if directory_stat.st_uid == os.geteuid() and not directory_stat.st_mode & 0o1000:
+            os.chmod(database_path.parent, 0o700)
+        os.chmod(database_path, 0o600)
+        wal_path = Path(f"{database_path}-wal")
+        if wal_path.exists():
+            os.chmod(wal_path, 0o600)
+
+    def package_runtime_operation(self, request_id: str) -> dict[str, object] | None:
+        """Load the private lifecycle record without projecting its receipt."""
+
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT request_id, binding_id, package_id, installation_id, operation, phase, "
+                "runtime_status_json, receipt_json FROM package_runtime_owner_operations "
+                "WHERE request_id = ?",
+                (request_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "request_id": row["request_id"],
+            "binding_id": row["binding_id"],
+            "package_id": row["package_id"],
+            "installation_id": row["installation_id"],
+            "operation": row["operation"],
+            "phase": row["phase"],
+            "runtime_status": json.loads(row["runtime_status_json"])
+            if row["runtime_status_json"]
+            else None,
+            "receipt": json.loads(row["receipt_json"]) if row["receipt_json"] else None,
+        }
+
+    def pending_package_runtime_operation(self, binding_id: str) -> dict[str, object] | None:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT request_id FROM package_runtime_owner_operations "
+                "WHERE binding_id = ? AND phase IN ('INTENT', 'UNKNOWN', 'RECEIPT_PENDING')",
+                (binding_id,),
+            ).fetchone()
+        return self.package_runtime_operation(row["request_id"]) if row else None
+
+    def latest_package_runtime_operation(self, binding_id: str) -> dict[str, object] | None:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT request_id FROM package_runtime_owner_operations "
+                "WHERE binding_id = ? ORDER BY updated_at DESC, rowid DESC LIMIT 1",
+                (binding_id,),
+            ).fetchone()
+        return self.package_runtime_operation(row["request_id"]) if row else None
+
+    def create_package_runtime_intent(
+        self, request_id: str, binding_id: str, package_id: str, installation_id: str
+    ) -> dict[str, object]:
+        """Commit an exact scope before any PackageRuntime mutation is dispatched."""
+
+        with self._lock, self._connection:
+            existing = self._connection.execute(
+                "SELECT request_id, binding_id, package_id, installation_id, operation, phase, "
+                "runtime_status_json, receipt_json FROM package_runtime_owner_operations "
+                "WHERE request_id = ?",
+                (request_id,),
+            ).fetchone()
+            if existing is not None:
+                existing_scope = (
+                    existing["binding_id"],
+                    existing["package_id"],
+                    existing["installation_id"],
+                    existing["operation"],
+                )
+                if existing_scope != (
+                    binding_id,
+                    package_id,
+                    installation_id,
+                    "activate",
+                ):
+                    raise ValueError("PACKAGE_RUNTIME_REQUEST_SCOPE_CONFLICT")
+                return self.package_runtime_operation(request_id) or {}
+            pending = self._connection.execute(
+                "SELECT request_id FROM package_runtime_owner_operations "
+                "WHERE binding_id = ? AND phase IN ('INTENT', 'UNKNOWN', 'RECEIPT_PENDING')",
+                (binding_id,),
+            ).fetchone()
+            if pending is not None:
+                raise ValueError("PACKAGE_RUNTIME_BINDING_OPERATION_PENDING")
+            self._connection.execute(
+                "INSERT INTO package_runtime_owner_operations"
+                "(request_id, binding_id, package_id, installation_id, operation, "
+                "phase, updated_at) "
+                "VALUES (?, ?, ?, ?, 'activate', 'INTENT', ?)",
+                (
+                    request_id,
+                    binding_id,
+                    package_id,
+                    installation_id,
+                    datetime.now().astimezone().isoformat(),
+                ),
+            )
+            return self.package_runtime_operation(request_id) or {}
+
+    def mark_package_runtime_unknown(self, request_id: str) -> None:
+        with self._lock, self._connection:
+            self._connection.execute(
+                "UPDATE package_runtime_owner_operations SET phase='UNKNOWN', updated_at=? "
+                "WHERE request_id=? AND phase='INTENT' AND receipt_json IS NULL",
+                (datetime.now().astimezone().isoformat(), request_id),
+            )
+
+    def persist_package_runtime_receipt(self, request_id: str, receipt: dict[str, object]) -> None:
+        """Save a typed Gate receipt returned with a pending-operation error."""
+
+        with self._lock, self._connection:
+            cursor = self._connection.execute(
+                "UPDATE package_runtime_owner_operations SET phase='RECEIPT_PENDING', "
+                "receipt_json=?, updated_at=? WHERE request_id=? "
+                "AND phase IN ('INTENT', 'UNKNOWN') AND receipt_json IS NULL",
+                (
+                    json.dumps(receipt, separators=(",", ":")),
+                    datetime.now().astimezone().isoformat(),
+                    request_id,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("PACKAGE_RUNTIME_INTENT_NOT_PENDING")
+
+    def commit_package_runtime_outcome(
+        self, request_id: str, runtime_status: dict[str, object], receipt: dict[str, object]
+    ) -> None:
+        """Atomically persist actual binding status and the private opaque receipt."""
+
+        with self._lock, self._connection:
+            row = self._connection.execute(
+                "SELECT phase FROM package_runtime_owner_operations WHERE request_id=?",
+                (request_id,),
+            ).fetchone()
+            if row is None or row["phase"] not in {"INTENT", "UNKNOWN", "RECEIPT_PENDING"}:
+                raise ValueError("PACKAGE_RUNTIME_INTENT_NOT_PENDING")
+            self._connection.execute(
+                "UPDATE package_runtime_owner_operations SET phase='RECEIPT_PENDING', "
+                "runtime_status_json=?, receipt_json=?, updated_at=? WHERE request_id=?",
+                (
+                    json.dumps(runtime_status, separators=(",", ":")),
+                    json.dumps(receipt, separators=(",", ":")),
+                    datetime.now().astimezone().isoformat(),
+                    request_id,
+                ),
+            )
+
+    def complete_package_runtime_operation(self, request_id: str) -> None:
+        with self._lock, self._connection:
+            cursor = self._connection.execute(
+                "UPDATE package_runtime_owner_operations SET phase='COMPLETED', updated_at=? "
+                "WHERE request_id=? AND phase='RECEIPT_PENDING' AND receipt_json IS NOT NULL",
+                (datetime.now().astimezone().isoformat(), request_id),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("PACKAGE_RUNTIME_RECEIPT_NOT_PERSISTED")
 
     def _migrate_execution_evidence(self) -> None:
         """Move legacy public execution refs into the private evidence table.
@@ -147,6 +365,199 @@ class ReactorStore:
                 "SELECT document FROM deployment_drafts ORDER BY rowid DESC"
             ).fetchall()
         return [DeploymentDraft.model_validate_json(row["document"]) for row in rows]
+
+    def resolve_model_import_request(
+        self,
+        key: str | None,
+        digest: str,
+        idempotency_scope: str = "model-import",
+    ) -> str | None:
+        """Resolve model-import replay or reject conflicting key reuse. | 解析导入幂等重放。"""
+
+        if key is None:
+            return None
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT request_hash, resource_id FROM idempotency WHERE scope = ? AND key = ?",
+                (idempotency_scope, key),
+            ).fetchone()
+        if row is None:
+            return None
+        if row["request_hash"] != digest:
+            raise ReactorProductError(
+                code="REACTOR_IDEMPOTENCY_CONFLICT",
+                title="Idempotency key conflict",
+                detail="The Idempotency-Key was already used with a different import request.",
+                status=409,
+            )
+        return str(row["resource_id"])
+
+    def commit_model_import_intent(
+        self,
+        model_import: ModelImport,
+        key: str | None,
+        digest: str,
+        *,
+        idempotency_scope: str = "model-import",
+        workspace_scope: tuple[str, str] | None = None,
+        workspace_serving_binding_grants: frozenset[tuple[str, str, str]] = frozenset(),
+    ) -> str | None:
+        """Persist import intent and retry identity atomically. | 原子持久化导入意图。"""
+
+        with self._lock, self._connection:
+            if (
+                workspace_scope is not None
+                and (
+                    model_import.serving_binding_id,
+                    workspace_scope[0],
+                    workspace_scope[1],
+                )
+                not in workspace_serving_binding_grants
+            ):
+                raise ReactorProductError(
+                    code="REACTOR_WORKSPACE_BINDING_NOT_GRANTED",
+                    title="Serving binding is not granted",
+                    detail="The selected serving binding is not granted to this Workspace.",
+                    status=403,
+                )
+            replay = self.resolve_model_import_request(key, digest, idempotency_scope)
+            if replay is not None:
+                if self.model_import_scope(UUID(replay)) != workspace_scope:
+                    raise ReactorProductError(
+                        code="REACTOR_WORKSPACE_SCOPE_CONFLICT",
+                        title="Workspace scope conflict",
+                        detail="The ModelImport belongs to a different Workspace scope.",
+                        status=409,
+                    )
+                return replay
+            self._connection.execute(
+                "INSERT INTO model_imports(id, document) VALUES (?, ?)",
+                (str(model_import.id), model_import.model_dump_json(exclude_none=True)),
+            )
+            if key is not None:
+                self._connection.execute(
+                    "INSERT INTO idempotency(scope, key, request_hash, resource_id) "
+                    "VALUES (?, ?, ?, ?)",
+                    (idempotency_scope, key, digest, str(model_import.id)),
+                )
+            if workspace_scope is not None:
+                self._connection.execute(
+                    "INSERT INTO model_import_scopes(id, organization_id, workspace_id) "
+                    "VALUES (?, ?, ?)",
+                    (str(model_import.id), workspace_scope[0], workspace_scope[1]),
+                )
+        return None
+
+    def save_model_import(self, model_import: ModelImport) -> None:
+        """Upsert a ModelImport validation observation. | 写入导入校验观测。"""
+
+        with self._lock, self._connection:
+            self._connection.execute(
+                "INSERT OR REPLACE INTO model_imports(id, document) VALUES (?, ?)",
+                (str(model_import.id), model_import.model_dump_json(exclude_none=True)),
+            )
+
+    def get_model_import(self, identifier: UUID) -> ModelImport | None:
+        """Read an import by Product identity. | 按产品身份读取导入。"""
+
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT document FROM model_imports WHERE id = ?", (str(identifier),)
+            ).fetchone()
+        return ModelImport.model_validate_json(row["document"]) if row else None
+
+    def get_unscoped_model_import(self, identifier: UUID) -> ModelImport | None:
+        """Read only legacy imports without trusted Workspace provenance."""
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT model_imports.document FROM model_imports "
+                "LEFT JOIN model_import_scopes ON model_import_scopes.id = model_imports.id "
+                "WHERE model_imports.id = ? AND model_import_scopes.id IS NULL",
+                (str(identifier),),
+            ).fetchone()
+        return ModelImport.model_validate_json(row["document"]) if row else None
+
+    def get_model_import_for_workspace(
+        self,
+        identifier: UUID,
+        organization_id: str,
+        workspace_id: str,
+    ) -> ModelImport | None:
+        """Read an import only from its exact authenticated scope."""
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT model_imports.document FROM model_imports "
+                "JOIN model_import_scopes ON model_import_scopes.id = model_imports.id "
+                "WHERE model_imports.id = ? AND model_import_scopes.organization_id = ? "
+                "AND model_import_scopes.workspace_id = ?",
+                (str(identifier), organization_id, workspace_id),
+            ).fetchone()
+        return ModelImport.model_validate_json(row["document"]) if row else None
+
+    def model_import_scope(self, identifier: UUID) -> tuple[str, str] | None:
+        """Return immutable import provenance, or None for legacy records."""
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT organization_id, workspace_id FROM model_import_scopes WHERE id = ?",
+                (str(identifier),),
+            ).fetchone()
+        return (str(row[0]), str(row[1])) if row else None
+
+    def list_model_imports(self) -> list[ModelImport]:
+        """List legacy imports without trusted Workspace provenance."""
+
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT model_imports.document FROM model_imports "
+                "LEFT JOIN model_import_scopes ON model_import_scopes.id = model_imports.id "
+                "WHERE model_import_scopes.id IS NULL ORDER BY model_imports.rowid DESC"
+            ).fetchall()
+        return [ModelImport.model_validate_json(row["document"]) for row in rows]
+
+    def list_active_activity_tasks(self) -> list[dict[str, str]]:
+        """Return active imports and deployment transitions for gate reconciliation."""
+
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT document FROM model_imports ORDER BY rowid"
+            ).fetchall()
+        imports = [ModelImport.model_validate_json(row["document"]) for row in rows]
+        tasks = [
+            {"task_id": f"model-import:{model_import.id}", "state": "RUNNING"}
+            for model_import in imports
+            if model_import.state is ModelImportState.VALIDATING
+        ]
+        deployments = self.list_deployments()
+        tasks.extend(
+            {
+                "task_id": f"deployment:{deployment.id}",
+                "state": (
+                    "CANCELING"
+                    if deployment.observed_state is ObservedState.STOPPING
+                    else "DISPATCHING"
+                ),
+            }
+            for deployment in deployments
+            if deployment.observed_state in {ObservedState.STARTING, ObservedState.STOPPING}
+        )
+        return tasks
+
+    def list_model_imports_for_workspace(
+        self,
+        organization_id: str,
+        workspace_id: str,
+    ) -> list[ModelImport]:
+        """List imports whose ProductStore provenance matches exactly."""
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT model_imports.document FROM model_imports "
+                "JOIN model_import_scopes ON model_import_scopes.id = model_imports.id "
+                "WHERE model_import_scopes.organization_id = ? "
+                "AND model_import_scopes.workspace_id = ? "
+                "ORDER BY model_imports.rowid DESC",
+                (organization_id, workspace_id),
+            ).fetchall()
+        return [ModelImport.model_validate_json(row["document"]) for row in rows]
 
     def save_deployment(self, deployment: Deployment) -> None:
         """Upsert a Deployment. | 写入 Deployment。"""
@@ -278,3 +689,172 @@ class ReactorStore:
                 "VALUES ('create-deployment', ?, ?, ?)",
                 (key, digest, str(resource_id)),
             )
+
+    def append_deployment_event(
+        self,
+        deployment_id: UUID,
+        phase: DeploymentPhase,
+        message: str,
+        occurred_at: datetime,
+        failure_code: str | None = None,
+    ) -> DeploymentEvent:
+        """Record an execution phase transition event. | 记录部署阶段事件。"""
+
+        with self._lock, self._connection:
+            row = self._connection.execute(
+                "SELECT COALESCE(MAX(sequence), 0) + 1 FROM deployment_events "
+                "WHERE deployment_id = ?",
+                (str(deployment_id),),
+            ).fetchone()
+            seq = int(row[0]) if row else 1
+            self._connection.execute(
+                """
+                INSERT INTO deployment_events (
+                    deployment_id, sequence, phase, message, occurred_at, failure_code
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(deployment_id),
+                    seq,
+                    phase.value if hasattr(phase, "value") else str(phase),
+                    message,
+                    occurred_at.isoformat(),
+                    failure_code,
+                ),
+            )
+            return DeploymentEvent(
+                sequence=seq,
+                phase=DeploymentPhase(phase),
+                message=message,
+                occurred_at=occurred_at,
+                failure_code=failure_code,
+            )
+
+    def append_deployment_diagnostics(
+        self, deployment_id: UUID, documents: list[dict[str, object]]
+    ) -> list[dict[str, object]]:
+        """Append diagnostics with one monotonic sequence per deployment.
+
+        Both Product records and harvested runtime records land in this table so
+        a console pages one ordered stream instead of merging two.
+
+            中文:为每个 Deployment 按单调递增序列追加诊断记录。
+
+                中文：Product 记录和收集到的运行时记录都会写入此表,
+                使控制台只需分页读取一条有序数据流,而不必合并两个数据流。
+        """
+
+        if not documents:
+            return []
+        appended: list[dict[str, object]] = []
+        with self._lock, self._connection:
+            row = self._connection.execute(
+                "SELECT COALESCE(MAX(sequence), 0) FROM deployment_diagnostics"
+                " WHERE deployment_id = ?",
+                (str(deployment_id),),
+            ).fetchone()
+            sequence = int(row[0]) if row else 0
+            index_row = self._connection.execute(
+                "SELECT COUNT(*) FROM deployment_diagnostics WHERE deployment_id = ?",
+                (str(deployment_id),),
+            ).fetchone()
+            record_index = int(index_row[0]) if index_row else 0
+            for offset, document in enumerate(documents):
+                sequence += 1
+                index = record_index + offset
+                record = {**document, "sequence": sequence}
+                self._connection.execute(
+                    "INSERT OR REPLACE INTO deployment_diagnostics"
+                    " (deployment_id, record_index, sequence, document) VALUES (?, ?, ?, ?)",
+                    (str(deployment_id), index, sequence, json.dumps(record, sort_keys=True)),
+                )
+                appended.append(record)
+        return appended
+
+    def deployment_diagnostics_count(self, deployment_id: UUID) -> int:
+        """How many diagnostic records are already durable for a deployment.
+
+        中文:某个 Deployment 已持久化的诊断记录数量。"""
+
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT COUNT(*) FROM deployment_diagnostics WHERE deployment_id = ?",
+                (str(deployment_id),),
+            ).fetchone()
+        return int(row[0]) if row else 0
+
+    def list_deployment_diagnostics(
+        self, deployment_id: UUID, after_sequence: int = 0, limit: int = 200
+    ) -> list[dict[str, object]]:
+        """Read diagnostics in sequence order. | 按序号读取部署诊断。"""
+
+        bounded = max(1, min(int(limit), 500))
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT document FROM deployment_diagnostics"
+                " WHERE deployment_id = ? AND sequence > ? ORDER BY sequence ASC LIMIT ?",
+                (str(deployment_id), int(after_sequence), bounded),
+            ).fetchall()
+        return [json.loads(row["document"]) for row in rows]
+
+    def deployment_diagnostics_degraded(self, deployment_id: UUID) -> bool:
+        """True when a persisted record shows the runtime lost output.
+
+        中文:当持久化记录表明运行时丢失了输出时返回 True。"""
+
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT 1 FROM deployment_diagnostics WHERE deployment_id = ? AND document LIKE ?",
+                (str(deployment_id), "%REACTOR.DIAGNOSTICS.DEGRADED%"),
+            ).fetchone()
+        return row is not None
+
+    def runtime_diagnostics_cursor(self, deployment_id: UUID) -> int:
+        """Highest runtime sequence already harvested for this deployment.
+
+        中文:此 Deployment 已收集到的最高运行时序列号。"""
+
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT runtime_sequence FROM deployment_diagnostics_cursors"
+                " WHERE deployment_id = ?",
+                (str(deployment_id),),
+            ).fetchone()
+        return int(row["runtime_sequence"]) if row else 0
+
+    def set_runtime_diagnostics_cursor(self, deployment_id: UUID, sequence: int) -> None:
+        """Record how much runtime output has been harvested.
+
+        中文:记录已收集的运行时输出量。"""
+
+        with self._lock, self._connection:
+            self._connection.execute(
+                "INSERT OR REPLACE INTO deployment_diagnostics_cursors"
+                " (deployment_id, runtime_sequence) VALUES (?, ?)",
+                (str(deployment_id), int(sequence)),
+            )
+
+    def list_deployment_events(self, deployment_id: UUID) -> list[DeploymentEvent]:
+        """List all events recorded for a deployment in order. | 按序列出部署阶段事件。"""
+
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT sequence, phase, message, occurred_at, failure_code
+                FROM deployment_events
+                WHERE deployment_id = ?
+                ORDER BY sequence ASC
+                """,
+                (str(deployment_id),),
+            ).fetchall()
+            return [
+                DeploymentEvent(
+                    sequence=row["sequence"],
+                    phase=DeploymentPhase(row["phase"]),
+                    message=row["message"],
+                    occurred_at=datetime.fromisoformat(row["occurred_at"]),
+                    failure_code=row["failure_code"],
+                )
+                for row in rows
+            ]

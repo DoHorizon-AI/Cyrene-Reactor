@@ -48,7 +48,9 @@ class TestInferenceServer:
         assert server is not None
 
     def test_ensure_model_delegates_to_plugin_engine(self, server, mock_engine):
-        """Model loading delegates through the selected Plugin provider."""
+        """Model loading delegates through the selected Plugin provider.
+
+            中文:模型加载会委派给选定的 Plugin 提供方。"""
         loaded = server.ensure_model(
             "test-model",
             model_path="/valid/model",
@@ -125,16 +127,19 @@ class TestInferenceServerAsync:
         import asyncio
 
         async def _run():
-            with patch.object(server, "stream_predict", return_value=iter(["a", "b"])):
+            stream_predict = Mock(return_value=iter(["a", "b"]))
+            with patch.object(server, "stream_predict", stream_predict):
                 items = []
                 async for chunk in server.async_stream_predict(
                     model_id="model",
                     prompt="Hello",
                     model_path="/path/to/model",
                     provider_id="fixture.engine",
+                    trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
                 ):
                     items.append(chunk)
                 assert items == ["a", "b"]
+                assert stream_predict.call_args.kwargs["trace_id"] == "4bf92f3577b34da6a3ce929d0e0e4736"
 
         asyncio.run(_run())
 
@@ -257,6 +262,27 @@ class TestInferenceServerLifecycle:
                 provider_id="fixture.engine",
             )
         mock_engine.unload_model.assert_called()
+
+    def test_load_cleanup_failure_logs_trace_and_only_cause_type(self, caplog):
+        mock_engine = MagicMock()
+        mock_engine.load_model.side_effect = RuntimeError("load failed")
+        mock_engine.unload_model.side_effect = RuntimeError("credential=must-not-be-logged")
+        server = InferenceServer(engine_factory=Mock(return_value=mock_engine))
+
+        with caplog.at_level("WARNING", logger="cy_llm.worker.server"):
+            with pytest.raises(RuntimeError, match="load failed"):
+                server.ensure_model(
+                    model_id="trace-model",
+                    model_path="/valid/path",
+                    provider_id="fixture.engine",
+                    trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
+                )
+
+        assert "event=reactor.model_cleanup_failed" in caplog.text
+        assert "phase=model_load" in caplog.text
+        assert "trace_id=4bf92f3577b34da6a3ce929d0e0e4736" in caplog.text
+        assert "cause_type=RuntimeError" in caplog.text
+        assert "credential=must-not-be-logged" not in caplog.text
 
 
 if __name__ == "__main__":

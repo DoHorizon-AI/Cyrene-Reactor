@@ -23,6 +23,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      - name: Enforce public host-placement dependency boundary
+        run: |
+          if grep -n 'cy-adapter-client' Cargo.toml Cargo.lock || \
+            grep -R -n --include='Cargo.toml' 'cy-adapter-client' components; then
+            echo 'Reactor host placement must use public contract crates, not the AGPL adapter client.' >&2
+            exit 1
+          fi
       - name: Cargo check (--locked)
         run: cargo check --locked --workspace --all-targets
       - name: Clippy check
@@ -64,14 +71,89 @@ jobs:
           fi
       - name: Lint and test Python serving seams
         run: |
-          uv sync --frozen --extra dev
+          uv sync --locked --extra dev
+          uv pip check
           uv run --frozen ruff check runtime/core/src runtime/core/tests runtime/pro/src runtime/pro/tests
           uv run --frozen python -m pytest runtime/core/tests/ runtime/pro/tests/
+
+  python-product-owner:
+    name: ci / python-product-owner
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: product
+    steps:
+      - uses: actions/checkout@v4
+      # Canonical exact Platform SDK merge pin; do not change this to a moving ref.
+      - name: Check out the exact canonical Package Runtime SDK revision
+        uses: actions/checkout@v4
+        with:
+          repository: DoHorizon-AI/Cyrene-Platform
+          ref: 35115e02fa4f07302af412ed9f3213a84488a665
+          path: .ci/cyrene-platform-sdk
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pinned uv
+        run: python -m pip install --disable-pip-version-check uv==0.12.3
+      - name: Verify the Platform SDK checkout is exact
+        run: |
+          test "$(git -C ../.ci/cyrene-platform-sdk rev-parse HEAD)" = "35115e02fa4f07302af412ed9f3213a84488a665"
+          test -f ../.ci/cyrene-platform-sdk/sdk/python/cyrene_runtime_maintenance/src/cyrene_runtime_maintenance/package_runtime.py
+      - name: Sync locked Product environment
+        run: uv sync --locked --group dev
+      - name: Require the checked-out Package Runtime SDK
+        env:
+          PLATFORM_RUNTIME_SDK_SOURCE: ${{ github.workspace }}/.ci/cyrene-platform-sdk/sdk/python/cyrene_runtime_maintenance/src
+          PYTHONPATH: ${{ github.workspace }}/.ci/cyrene-platform-sdk/sdk/python/cyrene_runtime_maintenance/src
+        run: |
+          uv run --locked python - <<'PY'
+          import os
+          from pathlib import Path
+
+          import cyrene_runtime_maintenance as sdk
+
+          expected_source = Path(os.environ["PLATFORM_RUNTIME_SDK_SOURCE"]).resolve()
+          actual_package = Path(sdk.__file__).resolve()
+          if actual_package.parent != expected_source / "cyrene_runtime_maintenance":
+              raise SystemExit(f"unexpected Package Runtime SDK import: {actual_package}")
+          if not callable(getattr(sdk.PackageRuntimeClient, "reconcile_binding_operation_and_persist", None)):
+              raise SystemExit("checked-out Package Runtime SDK is missing owner reconciliation support")
+          print(f"Using Package Runtime SDK from {actual_package}")
+          PY
+      - name: Lint Product owner and API paths
+        run: >-
+          uv run --locked ruff check
+          src/cyrene_reactor_product/api.py
+          src/cyrene_reactor_product/cli.py
+          src/cyrene_reactor_product/package_runtime_owner.py
+          src/cyrene_reactor_product/remote_engine.py
+          src/cyrene_reactor_product/store.py
+          tests/test_package_runtime_owner.py
+          tests/test_package_runtime_owner_actions.py
+      - name: Check Product owner and API formatting
+        run: >-
+          uv run --locked ruff format --check
+          src/cyrene_reactor_product/api.py
+          src/cyrene_reactor_product/cli.py
+          src/cyrene_reactor_product/package_runtime_owner.py
+          src/cyrene_reactor_product/remote_engine.py
+          src/cyrene_reactor_product/store.py
+          tests/test_package_runtime_owner.py
+          tests/test_package_runtime_owner_actions.py
+      - name: Run the full Product test suite with the checked-out SDK
+        env:
+          PLATFORM_RUNTIME_SDK_SOURCE: ${{ github.workspace }}/.ci/cyrene-platform-sdk/sdk/python/cyrene_runtime_maintenance/src
+          PYTHONPATH: ${{ github.workspace }}/.ci/cyrene-platform-sdk/sdk/python/cyrene_runtime_maintenance/src
+        run: uv run --locked python -m pytest -q tests/
 
   publish-artifact:
     name: ci / immutable-artifact
     if: github.event_name != 'pull_request'
-    needs: [rust-clippy-test, python-serving]
+    needs: [rust-clippy-test, python-serving, python-product-owner]
     runs-on: ubuntu-latest
     permissions:
       contents: read

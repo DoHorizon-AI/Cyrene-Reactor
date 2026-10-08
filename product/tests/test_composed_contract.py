@@ -92,6 +92,7 @@ class _ComposedEngine:
 def test_composed_request_persists_canonical_identity(tmp_path: Path) -> None:
     engine = _ComposedEngine()
     app = create_app(
+        allow_unauthenticated_dev=True,
         database_path=tmp_path / "reactor.sqlite3",
         engines={"composed": engine},
     )
@@ -145,7 +146,11 @@ def test_composed_request_persists_canonical_identity(tmp_path: Path) -> None:
 
 def test_composed_identity_mismatch_stops_execution_and_fails_closed(tmp_path: Path) -> None:
     engine = _ComposedEngine(report_identity=False)
-    app = create_app(database_path=tmp_path / "reactor.sqlite3", engines={"composed": engine})
+    app = create_app(
+        allow_unauthenticated_dev=True,
+        database_path=tmp_path / "reactor.sqlite3",
+        engines={"composed": engine},
+    )
     model_version = ModelVersion.create(
         {
             "schemaVersion": "1",
@@ -183,7 +188,11 @@ def test_imported_draft_requires_explicit_deploy_and_preserves_retry_identity(
     tmp_path: Path,
 ) -> None:
     engine = _ComposedEngine()
-    app = create_app(database_path=tmp_path / "reactor.sqlite3", engines={"composed": engine})
+    app = create_app(
+        allow_unauthenticated_dev=True,
+        database_path=tmp_path / "reactor.sqlite3",
+        engines={"composed": engine},
+    )
     version = ModelVersion.create(
         {
             "schemaVersion": "1",
@@ -249,7 +258,11 @@ def test_imported_draft_requires_explicit_deploy_and_preserves_retry_identity(
 
 def test_composed_model_export_is_explicitly_unsupported(tmp_path: Path) -> None:
     engine = _ComposedEngine()
-    app = create_app(database_path=tmp_path / "reactor.sqlite3", engines={"composed": engine})
+    app = create_app(
+        allow_unauthenticated_dev=True,
+        database_path=tmp_path / "reactor.sqlite3",
+        engines={"composed": engine},
+    )
     model_version = ModelVersion.create(
         {
             "schemaVersion": "1",

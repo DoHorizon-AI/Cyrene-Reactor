@@ -1,4 +1,6 @@
-"""Worker entrypoint for the Product-owned inference coordinator."""
+"""Worker entrypoint for the Product-owned inference coordinator.
+
+中文:Product 所有推理协调器的工作进程入口。"""
 # ┌─────────────────────────────────────────────────────────────────────┐
 # │ 📄 runtime/core/src/cy_exec/main.py
 # │ Module: runtime/core/src/cy_exec/main
@@ -126,7 +128,8 @@ def setup_signal_handlers(stop_event: threading.Event) -> None:
 def graceful_shutdown(server, timeout: int = 5) -> None:
     try:
         server.stop(grace=timeout)
-    except Exception:
+    except Exception as exc:
+        LOGGER.warning("Failed to stop inference server during shutdown: %s", type(exc).__name__)
         return
 
 
